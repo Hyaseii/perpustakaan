@@ -1,16 +1,27 @@
 import re
+import time
+import traceback
 
-from config import PRODUCTION
-from core import session
+from config import PRODUCTION, APP_BASE_URL
+from core import session, reset_store
 from core.response import Response, error
 from models.user import User, DuplicateUserError
+from utils import mailer
 from utils.security import hash_password, verify_password, fake_verify
 from views import auth_view
 
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.]{3,50}$")
+# Pakai [0-9], bukan \d, karena \d ikut menerima angka dari aksara lain
+NPM_RE = re.compile(r"[0-9]{12}")
+PHONE_RE = re.compile(r"08[0-9]{8,11}")  # 08 + 8..11 angka = 10..13 digit
+NAME_RE = re.compile(r"[A-Za-z][A-Za-z .'-]{2,99}")  # 3-100 karakter
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD = 8
 MAX_PASSWORD = 128
+
+FORGOT_MESSAGE = "Jika email terdaftar, tautan pengaturan ulang password sudah dikirim. Cek juga folder Spam."
+BAD_LINK_MESSAGE = "Tautan tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru."
+FORGOT_COOLDOWN = 60  # detik
+_last_forgot = {}  # {user_id: waktu permintaan terakhir}
 
 
 def _text(value):
@@ -20,21 +31,34 @@ def _text(value):
 
 def register(request):
     body = request.json()
-    username = _text(body.get("username"))
+    full_name = " ".join(_text(body.get("full_name")).split())  # rapikan spasi ganda
+    npm = _text(body.get("npm"))
     email = _text(body.get("email")).lower()
+    phone = _text(body.get("phone"))
     password = body.get("password")
 
-    if not USERNAME_RE.match(username):
-        return error("Username 3-50 karakter: huruf, angka, titik, atau underscore", 400)
+    if not NAME_RE.fullmatch(full_name):
+        return error("Nama lengkap 3-100 karakter: huruf, spasi, titik, apostrof, atau tanda hubung", 400)
+    if not NPM_RE.fullmatch(npm):
+        return error("NPM harus 12 digit angka", 400)
     if len(email) > 255 or not EMAIL_RE.match(email):
         return error("Format email tidak valid", 400)
+    if not PHONE_RE.fullmatch(phone):
+        return error("Nomor HP harus diawali 08, hanya angka, 10-13 digit", 400)
     if not isinstance(password, str) or not (MIN_PASSWORD <= len(password) <= MAX_PASSWORD):
         return error(f"Password harus {MIN_PASSWORD}-{MAX_PASSWORD} karakter", 400)
 
     try:
-        user_id = User.create(username, email, hash_password(password))
-    except DuplicateUserError:
-        return error("Username atau email sudah terdaftar", 409)
+        user_id = User.create(
+            username=npm,  # member: username otomatis = NPM
+            email=email,
+            password_hash=hash_password(password),
+            npm=npm,
+            full_name=full_name,
+            phone=phone,
+        )
+    except DuplicateUserError as e:
+        return error(str(e), 409)
 
     return Response(201, auth_view.register_ok(User.find_by_id(user_id)))
 
@@ -45,9 +69,9 @@ def login(request):
     password = body.get("password")
 
     if not identifier or not isinstance(password, str) or not password:
-        return error("Isi username/email dan password", 400)
+        return error("Isi NPM/email dan password", 400)
 
-    gagal = error("Username/email atau password salah", 401)
+    gagal = error("NPM/email atau password salah", 401)
     if len(password) > MAX_PASSWORD:
         return gagal
 
@@ -76,3 +100,47 @@ def logout(request):
 
 def me(request):
     return Response(200, auth_view.me(request.user))
+
+
+def forgot(request):
+    body = request.json()
+    email = _text(body.get("email")).lower()
+    if len(email) > 255 or not EMAIL_RE.match(email):
+        return error("Format email tidak valid", 400)
+
+    user = User.find_by_email(email)
+    now = time.time()
+    if user and now - _last_forgot.get(user["id"], 0) >= FORGOT_COOLDOWN:
+        _last_forgot[user["id"]] = now
+        token = reset_store.create(user["id"])
+        link = f"{APP_BASE_URL}/Pages/reset?token={token}"
+        try:
+            mailer.send_reset_email(user["email"], user["full_name"], link)
+        except Exception:
+            traceback.print_exc()  # detail hanya di terminal, jangan bocor ke pengguna
+
+    # Respons sama untuk semua kasus, supaya email terdaftar tidak bisa ditebak
+    return Response(200, {"message": FORGOT_MESSAGE})
+
+
+def reset_check(request):
+    body = request.json()
+    if reset_store.peek(body.get("token")) is None:
+        return error(BAD_LINK_MESSAGE, 400)
+    return Response(200, {"message": "Tautan valid"})
+
+
+def reset(request):
+    body = request.json()
+    token = body.get("token")
+    password = body.get("password")
+
+    if not isinstance(password, str) or not (MIN_PASSWORD <= len(password) <= MAX_PASSWORD):
+        return error(f"Password harus {MIN_PASSWORD}-{MAX_PASSWORD} karakter", 400)
+
+    user_id = reset_store.consume(token)
+    if user_id is None:
+        return error(BAD_LINK_MESSAGE, 400)
+
+    User.update_password(user_id, hash_password(password))
+    return Response(200, {"message": "Password berhasil diubah. Silakan login."})

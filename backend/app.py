@@ -1,7 +1,7 @@
 import os
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from config import HOST, PORT, FRONTEND_DIR
 from core import session
@@ -11,9 +11,9 @@ from models.user import User
 from routes import router
 
 ROOT = os.path.realpath(FRONTEND_DIR)
-ALLOWED_DIRS = {os.path.normcase(n) for n in ("Pages", "Style", "Js")}
+ALLOWED_DIRS = {os.path.normcase(n) for n in ("Pages", "Style", "Js", "assets")}
 PROTECTED = [os.path.join(ROOT, "Pages", "dashboard.html")]  # wajib login
-LOGIN_PAGE = "/Pages/login.html"
+LOGIN_PAGE = "/Pages/index"
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -32,9 +32,11 @@ CONTENT_TYPES = {
 
 
 def resolve_static(url_path):
-    """Ubah URL jadi path file di frontend/. Kembalikan None kalau tidak boleh/tidak ada."""
+    """Ubah URL jadi path file di frontend/. URL bersih: /Pages/login -> Pages/login.html."""
     try:
         rel = unquote(url_path).lstrip("/")
+        if not os.path.splitext(rel)[1]:
+            rel += ".html"  # tanpa ekstensi dianggap halaman HTML
         full = os.path.realpath(os.path.join(ROOT, rel))
         common = os.path.commonpath([full, ROOT])
         if os.path.normcase(common) != os.path.normcase(ROOT):
@@ -80,6 +82,12 @@ class Handler(BaseHTTPRequestHandler):
             error("Tidak ditemukan", 404).send(self)
             return
 
+        # /Pages/index.html -> /Pages/index (query string ikut dibawa)
+        if request.path.lower().endswith(".html"):
+            query = urlsplit(self.path).query
+            self._redirect(request.path[:-5] + ("?" + query if query else ""))
+            return
+
         is_protected = any(
             os.path.exists(p) and os.path.samefile(full, p) for p in PROTECTED
         )
@@ -97,6 +105,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
+
+    def _redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _redirect(self, location):
         self.send_response(302)
