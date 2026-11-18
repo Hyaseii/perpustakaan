@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lupa Password — Unindra Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../Style/global.css" />
+  <link rel="stylesheet" href="../Style/auth.css" />
+</head>
+<body data-page="auth">
+
+  <div class="auth-split-layout">
+    <!-- Panel Kiri: sama dengan halaman login -->
+    <aside class="auth-left-panel">
+      <div class="auth-left-overlay"></div>
+      <div class="auth-left-inner">
+        <div class="auth-brand">
+          <div class="auth-brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="auth-brand-name">Unindra Library</div>
+            <div class="auth-brand-uni">Universitas Indraprasta PGRI</div>
+          </div>
+        </div>
+
+        <div class="auth-story-copy">
+          <div class="auth-kicker">YOUR NEXT CHAPTER STARTS HERE</div>
+          <h1 class="auth-headline">A world of stories.<br />A place to belong.</h1>
+          <p class="auth-subheadline">
+            Discover something new, revisit an old favorite, and make room for a little wonder.
+          </p>
+          <div class="auth-metrics">
+            <span>12,480 books</span>
+            <span>1,248 members</span>
+            <span>One community</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Panel Kanan: formulir lupa password -->
+    <section class="auth-right-panel">
+      <header class="auth-topbar">
+        <span class="auth-welcome-tag">WELCOME TO UNINDRA LIBRARY</span>
+        <a href="#help" class="auth-help-btn" onclick="showToast('Hubungi petugas meja layanan perpustakaan untuk bantuan akun.'); return false;">Help ↗</a>
+      </header>
+
+      <main class="auth-main-center">
+        <div class="auth-card">
+          <div>
+            <h2 class="auth-title">Lupa password?</h2>
+            <p class="auth-subtitle">Masukkan email akun Anda. Kami akan mengirim tautan untuk membuat password baru.</p>
+          </div>
+
+          <form id="forgot-form" class="auth-form" onsubmit="handleForgot(event)">
+            <div class="field-group">
+              <label for="forgot-email">Email</label>
+              <input type="email" id="forgot-email" placeholder="you@example.com" maxlength="255" required />
+              <span class="field-help-text">Gunakan email yang Anda daftarkan. Tautan berlaku 30 menit. Jika email tidak masuk, cek folder Spam.</span>
+            </div>
+
+            <button type="submit" id="forgot-submit" class="btn btn-primary btn-block">Kirim tautan reset</button>
+
+            <div class="auth-switch-text">
+              Ingat password? <button type="button" class="text-link strong" onclick="window.location.href='/Pages/index'">Kembali ke Login →</button>
+            </div>
+          </form>
+        </div>
+      </main>
+
+      <footer class="auth-bottom-bar">
+        <span>© 2026 Unindra Library</span>
+        <span>Privacy · Terms</span>
+      </footer>
+    </section>
+  </div>
+
+  <script src="../Js/auth.js"></script>
+  <script src="../Js/forgot.js"></script>
+</body>
+</html>

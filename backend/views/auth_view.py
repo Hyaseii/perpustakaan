@@ -3,7 +3,10 @@ def user_data(user):
     return {
         "id": user["id"],
         "username": user["username"],
+        "npm": user["npm"],
+        "full_name": user["full_name"],
         "email": user["email"],
+        "phone": user["phone"],
         "role": user["role"],
         "created_at": str(user["created_at"]),
     }
