@@ -1,0 +1,239 @@
+/*pengaturan*/
+.settings-card {
+    padding: 28px 32px;
+}
+
+.settings-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.settings-head h1 {
+    font-size: 22px;
+}
+
+.settings-head p {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+.btn-soft {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border: 0;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-size: 11px;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.btn-soft:hover {
+    background: #bfdbfe;
+}
+
+.s-section {
+    margin-top: 22px;
+}
+
+.s-section h2 {
+    font-size: 17px;
+    margin-bottom: 12px;
+}
+
+.s-hint {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 12px;
+}
+
+.s-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px 24px;
+}
+
+.span-2 {
+    grid-column: 1 / -1;
+}
+
+.s-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.s-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #0f172a;
+}
+
+.s-bold {
+    font-size: 12px;
+    font-weight: bold;
+    color: #0f172a;
+}
+
+.s-value {
+    font-size: 13px;
+    font-weight: normal;
+    color: #475569;
+}
+
+.status-box,
+.value-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 12px;
+    background: white;
+}
+
+.s-item .status-box,
+.s-item .value-box {
+    align-self: flex-start;
+}
+
+.p-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+.m-title {
+    font-size: 15px;
+    margin-bottom: 12px;
+}
+
+.m-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.m-title-row .m-title {
+    margin-bottom: 8px;
+}
+
+.m-optional {
+    font-size: 11px;
+    color: var(--blue);
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.check input {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    cursor: pointer;
+}
+
+.profile-top {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.photo {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-size: 22px;
+    font-weight: bold;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/*peminjaman*/
+
+.section-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin: 24px 0 14px;
+}
+
+.section-row .section-title {
+    margin-top: 0;
+}
+
+.section-row .section-sub {
+    margin-bottom: 0;
+}
+
+.section-row > .muted {
+    font-size: 10px;
+}
+
+.loan-table th,
+.loan-table td {
+    text-align: left;
+    padding: 14px 10px;
+}
+
+.loan-table th:first-child,
+.loan-table td:first-child {
+    padding-left: 16px;
+}
+
+.dash {
+    color: #94a3b8;
+}
+
+.status-loan {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.status-returned {
+    background: #dbeafe;
+    color: #1e3a8a;
+}
+
+.status-overdue {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.icon-edit {
+    color: var(--blue);
+    background: #eaf1ff;
+}
+
+.icon-edit:hover {
+    background: var(--blue-soft);
+}
+
+#loanModal .field input,
+#loanModal .field select,
+#editLoanModal .field input,
+#editLoanModal .field select {
+    padding: 13px 14px;
+}

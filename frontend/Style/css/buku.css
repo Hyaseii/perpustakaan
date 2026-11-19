@@ -1,0 +1,201 @@
+/* =========================================================
+   UNINDRA LIBRARY — BUKU & DETAIL BUKU STYLES
+   ========================================================= */
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--navy-800);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.page-subtitle {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+/* Search Bar */
+.books-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input-box {
+  flex: 1;
+  height: 44px;
+  background-color: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-input-box:focus-within {
+  border-color: var(--blue-600);
+  box-shadow: 0 0 0 3px rgba(29, 99, 220, 0.1);
+}
+
+.search-input-box input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+
+.search-input-box input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input-box input:focus {
+  outline: none;
+}
+
+.books-search-row .btn-blue {
+  height: 44px;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+
+.books-policy-note {
+  margin-top: 28px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* =========================================================
+   DETAIL BUKU VIEW
+   ========================================================= */
+.back-to-books-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+  transition: color 0.15s ease;
+}
+
+.back-to-books-link:hover {
+  color: var(--navy-800);
+}
+
+.detail-book-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  box-shadow: var(--shadow-xs);
+}
+
+.detail-cover-img {
+  width: 156px;
+  height: 220px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+}
+
+.detail-book-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-category {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.detail-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--navy-800);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-bottom: 6px;
+}
+
+.detail-author {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.detail-copies {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.detail-rules {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+}
+
+.detail-borrow-btn {
+  min-width: 215px;
+}
+
+.detail-pickup-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.detail-extra-section {
+  margin-top: 24px;
+}
+
+.detail-section-heading {
+  font-size: 16.5px;
+  font-weight: 700;
+  color: var(--navy-800);
+  margin-top: 22px;
+  margin-bottom: 8px;
+}
+
+.detail-section-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 780px;
+}
+
+@media (max-width: 680px) {
+  .books-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-book-card {
+    flex-direction: column;
+    padding: 22px;
+  }
+
+  .detail-cover-img {
+    width: 140px;
+    height: 198px;
+  }
+
+  .detail-borrow-btn {
+    width: 100%;
+  }
+}
