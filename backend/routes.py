@@ -1,4 +1,4 @@
-from controllers import auth_controller, book_controller
+from controllers import auth_controller, book_controller, loan_controller
 from core.router import Router
 
 router = Router()
@@ -13,3 +13,5 @@ router.add("POST", "/api/auth/reset/check", auth_controller.reset_check)
 router.add("POST", "/api/auth/reset", auth_controller.reset)
 router.add("GET", "/api/books", book_controller.list_books, login=True)
 router.add("GET", "/api/books/{id}", book_controller.get_book, login=True)
+router.add("GET", "/api/loans", loan_controller.list_loans, login=True)
+router.add("POST", "/api/loans", loan_controller.borrow, login=True)

@@ -835,7 +835,7 @@
     }
   }
 
-  function borrowBookFromDetail(bookId) {
+  async function borrowBookFromDetail(bookId) {
     const book = state.catalogBooks.find((b) => b.id === bookId);
     if (!book) return;
     if (state.activeLoans.some((l) => l.id === book.id)) return;
@@ -844,27 +844,42 @@
       return;
     }
 
-    if (book.copies > 0) book.copies -= 1;
-    state.user.monthlyBorrowed += 1;
+    const borrowButton = document.getElementById("detail-borrow-btn");
+    if (borrowButton) {
+      borrowButton.disabled = true;
+      borrowButton.textContent = "Memproses...";
+    }
 
-    state.activeLoans.push({
-      id: book.id,
-      title: book.title,
-      subtitle: book.title,
-      author: book.author,
-      category: book.category,
-      borrowDate: "05 Oct 2026",
-      dueDate: "19 Oct 2026",
-      extendedDueDate: "26 Oct 2026",
-      daysLeftText: "14 hari tersisa",
-      renewed: false,
-      coverTheme: "theme-navy",
-      coverImage: book.cover
-    });
+    try {
+      const response = await fetch("/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          book_id: book.databaseId || null,
+          title: book.title
+        })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.message || "Peminjaman gagal disimpan");
+      }
 
-    saveState();
-    showToast(`Berhasil meminjam "${book.title}". Silakan ambil buku di meja layanan.`);
-    renderBookDetail(book.id);
+      await syncCatalogAndLoansFromApi();
+      state.user.monthlyBorrowed = Math.max(
+        state.user.monthlyBorrowed,
+        state.activeLoans.length
+      );
+      saveState();
+      showToast(`Berhasil meminjam "${book.title}". Silakan ambil buku di meja layanan.`);
+      refreshCurrentPage();
+      renderBookDetail(book.id);
+    } catch (error) {
+      showToast(error.message);
+      if (borrowButton) {
+        borrowButton.disabled = false;
+        borrowButton.textContent = "Pinjam buku";
+      }
+    }
   }
 
   // =========================================================
@@ -964,6 +979,22 @@
     showToast("Profil berhasil diperbarui.");
   };
 
+
+    // =========================================================
+  // SINKRON DATA DARI SERVER (buku dari database)
+  // =========================================================
+  async function syncCatalogAndLoansFromApi() {
+    try {
+      state.catalogBooks = await window.LibraryApi.getBooks();
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.href = "/Pages/index";   // belum login -> ke halaman login
+        return;
+      }
+      console.warn("Gagal mengambil buku dari server:", error);
+      showToast("Gagal memuat daftar buku dari server.");
+    }
+  }
   // =========================================================
   // BOOTSTRAP PAGE ON LOAD
   // =========================================================
@@ -979,7 +1010,9 @@
     const page = document.body.getAttribute("data-page");
     if (!page || page === "auth") return;
 
-    initSharedShell(page);
-    refreshCurrentPage();
+    syncCatalogAndLoansFromApi().finally(function () {
+      initSharedShell(page);
+      refreshCurrentPage();
+    });
   });
 })();
