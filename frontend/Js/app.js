@@ -559,17 +559,22 @@
     openModal("modal-renew-confirm");
   };
 
-  window.confirmRenewLoan = function () {
+  window.confirmRenewLoan = async function () {
     if (!pendingRenewLoanId) return;
-    const loan = state.activeLoans.find((l) => l.id === pendingRenewLoanId);
-    if (loan) {
-      loan.renewed = true;
-      saveState();
+      const loan = state.activeLoans.find((l) => l.id === pendingRenewLoanId);
+      pendingRenewLoanId = null;
+    if (!loan) return;
+
+    try {
+      await window.LibraryApi.renewLoan(loan.loanId);   // minta server memperpanjang
+      await syncCatalogAndLoansFromApi();               // ambil data terbaru
+      closeModal("modal-renew-confirm");
+      openModal("modal-renew-complete");
+      refreshCurrentPage();
+    } catch (error) {
+      closeModal("modal-renew-confirm");
+      showToast(error.message);                         // mis. "Pinjaman ini sudah diperpanjang 1 kali"
     }
-    pendingRenewLoanId = null;
-    closeModal("modal-renew-confirm");
-    openModal("modal-renew-complete");
-    refreshCurrentPage();
   };
 
   // =========================================================
@@ -835,7 +840,7 @@
     }
   }
 
-  function borrowBookFromDetail(bookId) {
+  async function borrowBookFromDetail(bookId) {
     const book = state.catalogBooks.find((b) => b.id === bookId);
     if (!book) return;
     if (state.activeLoans.some((l) => l.id === book.id)) return;
@@ -844,27 +849,46 @@
       return;
     }
 
-    if (book.copies > 0) book.copies -= 1;
-    state.user.monthlyBorrowed += 1;
+    const borrowButton = document.getElementById("detail-borrow-btn");
+    if (borrowButton) {
+      borrowButton.disabled = true;
+      borrowButton.textContent = "Memproses...";
+    }
 
-    state.activeLoans.push({
-      id: book.id,
-      title: book.title,
-      subtitle: book.title,
-      author: book.author,
-      category: book.category,
-      borrowDate: "05 Oct 2026",
-      dueDate: "19 Oct 2026",
-      extendedDueDate: "26 Oct 2026",
-      daysLeftText: "14 hari tersisa",
-      renewed: false,
-      coverTheme: "theme-navy",
-      coverImage: book.cover
-    });
+    try {
+      const response = await fetch("/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          book_id: book.databaseId || null,
+          title: book.title
+        })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+      state.user.monthlyBorrowed = Math.max(
+        state.user.monthlyBorrowed,
+        state.activeLoans.length
+      );
+        throw new Error(body.message || "Peminjaman gagal disimpan");
+      }
 
-    saveState();
-    showToast(`Berhasil meminjam "${book.title}". Silakan ambil buku di meja layanan.`);
-    renderBookDetail(book.id);
+      await syncCatalogAndLoansFromApi();
+      state.user.monthlyBorrowed = Math.max(
+        state.user.monthlyBorrowed,
+        state.activeLoans.length
+      );
+      saveState();
+      showToast(`Berhasil meminjam "${book.title}". Silakan ambil buku di meja layanan.`);
+      refreshCurrentPage();
+      renderBookDetail(book.id);
+    } catch (error) {
+      showToast(error.message);
+      if (borrowButton) {
+        borrowButton.disabled = false;
+        borrowButton.textContent = "Pinjam buku";
+      }
+    }
   }
 
   // =========================================================
@@ -964,6 +988,28 @@
     showToast("Profil berhasil diperbarui.");
   };
 
+
+    // =========================================================
+  // SINKRON DATA DARI SERVER (buku dari database)
+  // =========================================================
+      async function syncCatalogAndLoansFromApi() {
+    try {
+      const results = await Promise.all([
+        window.LibraryApi.getBooks(),
+        window.LibraryApi.getLoans()
+      ]);
+      state.catalogBooks = results[0];
+      state.activeLoans = results[1].loans;
+      state.user.monthlyBorrowed = results[1].monthlyBorrowed;
+    } catch (error) {
+      if (error.status === 401) {
+        window.location.href = "/Pages/index";
+        return;
+      }
+      console.warn("Gagal mengambil data dari server:", error);
+      showToast("Gagal memuat data dari server.");
+    }
+  }
   // =========================================================
   // BOOTSTRAP PAGE ON LOAD
   // =========================================================
@@ -979,7 +1025,9 @@
     const page = document.body.getAttribute("data-page");
     if (!page || page === "auth") return;
 
-    initSharedShell(page);
-    refreshCurrentPage();
+    syncCatalogAndLoansFromApi().finally(function () {
+      initSharedShell(page);
+      refreshCurrentPage();
+    });
   });
 })();

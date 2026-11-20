@@ -63,7 +63,10 @@ CREATE TABLE `peminjaman` (
 CREATE TABLE `user` (
   `id` int UNSIGNED NOT NULL,
   `username` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `npm` varchar(12) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `full_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `role` enum('admin','member') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'member',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -95,6 +98,7 @@ ALTER TABLE `peminjaman`
 ALTER TABLE `user`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uq_users_username` (`username`),
+  ADD UNIQUE KEY `uq_users_npm` (`npm`),
   ADD UNIQUE KEY `uq_users_email` (`email`);
 
 --
@@ -129,6 +133,14 @@ ALTER TABLE `user`
 ALTER TABLE `peminjaman`
   ADD CONSTRAINT `fk_loans_book` FOREIGN KEY (`book_id`) REFERENCES `buku` (`id`),
   ADD CONSTRAINT `fk_loans_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`);
+
+INSERT IGNORE INTO `buku`
+  (`title`, `author`, `category`, `isbn`, `stock`, `cover`)
+VALUES
+  ('Braiding Sweetgrass', 'Robin Wall Kimmerer', 'Nature', '9781571313560', 6, 'assets/Book cover.png'),
+  ('Sapiens', 'Yuval Noah Harari', 'History', '9780062316097', 7, 'assets/Book cover2.png'),
+  ('The Little Prince', 'Antoine de Saint-Exupéry', 'Fiction', '9780156013987', 9, 'assets/Book cover3.png');
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
