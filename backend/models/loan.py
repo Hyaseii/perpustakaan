@@ -1,4 +1,18 @@
+from datetime import date
+
 from database.db import cursor
+
+RENEW_DAYS = 7      # satu kali perpanjangan = tambah 7 hari
+MAX_RENEWALS = 1    # boleh diperpanjang berapa kali
+
+
+class LoanNotFoundError(Exception):
+    """Pinjaman tidak ada atau bukan milik user ini."""
+
+
+class LoanRuleError(Exception):
+    """Pinjaman ada, tapi aturan tidak mengizinkan."""
+
 
 
 class Loan:
@@ -75,3 +89,60 @@ class Loan:
                 (loan_id,),
             )
             return cur.fetchone()
+
+
+
+    @staticmethod
+    def renew(user_id, loan_id):
+        """Perpanjang satu pinjaman milik user: jatuh tempo + RENEW_DAYS hari."""
+        with cursor() as cur:
+            # FOR UPDATE = "kunci baris ini", supaya klik ganda tidak memperpanjang dua kali
+            cur.execute(
+                "SELECT id, status, due_date, renew_count FROM peminjaman "
+                "WHERE id = %s AND user_id = %s FOR UPDATE",
+                (loan_id, user_id),
+            )
+            loan = cur.fetchone()
+
+            if loan is None:
+                raise LoanNotFoundError("Pinjaman tidak ditemukan")
+            if loan["status"] != "borrowed":
+                raise LoanRuleError("Pinjaman ini sudah dikembalikan")
+            if loan["renew_count"] >= MAX_RENEWALS:
+                raise LoanRuleError(f"Pinjaman ini sudah diperpanjang {MAX_RENEWALS} kali")
+            if loan["due_date"] < date.today():
+                raise LoanRuleError(
+                    "Pinjaman sudah lewat jatuh tempo, silakan hubungi petugas perpustakaan"
+                )
+
+            cur.execute(
+                "UPDATE peminjaman "
+                "SET due_date = DATE_ADD(due_date, INTERVAL %s DAY), "
+                "renew_count = renew_count + 1 "
+                "WHERE id = %s",
+                (RENEW_DAYS, loan_id),
+            )
+
+            cur.execute(
+                "SELECT p.id, p.user_id, p.book_id, p.borrowed_at, p.due_date, "
+                "p.returned_at, p.status, p.renew_count, b.title, b.author, b.category, b.cover "
+                "FROM peminjaman p JOIN buku b ON b.id = p.book_id "
+                "WHERE p.id = %s",
+                (loan_id,),
+            )
+            return cur.fetchone()
+
+
+
+    @staticmethod
+    def count_this_month(user_id):
+        """Berapa kali user ini meminjam di bulan berjalan."""
+        with cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS total FROM peminjaman "
+                "WHERE user_id = %s "
+                "AND YEAR(borrowed_at) = YEAR(CURRENT_DATE()) "
+                "AND MONTH(borrowed_at) = MONTH(CURRENT_DATE())",
+                (user_id,),
+            )
+            return cur.fetchone()["total"]

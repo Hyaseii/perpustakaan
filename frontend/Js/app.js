@@ -559,17 +559,22 @@
     openModal("modal-renew-confirm");
   };
 
-  window.confirmRenewLoan = function () {
+  window.confirmRenewLoan = async function () {
     if (!pendingRenewLoanId) return;
-    const loan = state.activeLoans.find((l) => l.id === pendingRenewLoanId);
-    if (loan) {
-      loan.renewed = true;
-      saveState();
+      const loan = state.activeLoans.find((l) => l.id === pendingRenewLoanId);
+      pendingRenewLoanId = null;
+    if (!loan) return;
+
+    try {
+      await window.LibraryApi.renewLoan(loan.loanId);   // minta server memperpanjang
+      await syncCatalogAndLoansFromApi();               // ambil data terbaru
+      closeModal("modal-renew-confirm");
+      openModal("modal-renew-complete");
+      refreshCurrentPage();
+    } catch (error) {
+      closeModal("modal-renew-confirm");
+      showToast(error.message);                         // mis. "Pinjaman ini sudah diperpanjang 1 kali"
     }
-    pendingRenewLoanId = null;
-    closeModal("modal-renew-confirm");
-    openModal("modal-renew-complete");
-    refreshCurrentPage();
   };
 
   // =========================================================
@@ -861,6 +866,10 @@
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
+      state.user.monthlyBorrowed = Math.max(
+        state.user.monthlyBorrowed,
+        state.activeLoans.length
+      );
         throw new Error(body.message || "Peminjaman gagal disimpan");
       }
 
@@ -983,16 +992,22 @@
     // =========================================================
   // SINKRON DATA DARI SERVER (buku dari database)
   // =========================================================
-  async function syncCatalogAndLoansFromApi() {
+      async function syncCatalogAndLoansFromApi() {
     try {
-      state.catalogBooks = await window.LibraryApi.getBooks();
+      const results = await Promise.all([
+        window.LibraryApi.getBooks(),
+        window.LibraryApi.getLoans()
+      ]);
+      state.catalogBooks = results[0];
+      state.activeLoans = results[1].loans;
+      state.user.monthlyBorrowed = results[1].monthlyBorrowed;
     } catch (error) {
       if (error.status === 401) {
-        window.location.href = "/Pages/index";   // belum login -> ke halaman login
+        window.location.href = "/Pages/index";
         return;
       }
-      console.warn("Gagal mengambil buku dari server:", error);
-      showToast("Gagal memuat daftar buku dari server.");
+      console.warn("Gagal mengambil data dari server:", error);
+      showToast("Gagal memuat data dari server.");
     }
   }
   // =========================================================

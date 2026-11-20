@@ -7,6 +7,9 @@
 
   // Gambar bawaan kalau kolom cover di database masih kosong
   const DEFAULT_COVER = "/assets/Book%20cover.png";
+  // Nama bulan dan tema sampul mengikuti desain temanmu
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const COVER_THEMES = ["theme-ochre", "theme-forest"];
 
   // Ubah isi kolom cover (mis. "Book cover.png") jadi alamat yang bisa dibuka browser
   function coverUrl(cover) {
@@ -29,7 +32,7 @@
     return body;
   }
 
-  // Terjemahkan 1 buku dari server ke bentuk yang dipahami app.js
+  // ---------------- BUKU ----------------
   function toCatalogBook(row) {
     return {
       id: String(row.id),            // app.js memakai id berupa teks (untuk ?id=... di alamat)
@@ -48,5 +51,74 @@
     return body.books.map(toCatalogBook);
   }
 
-  window.LibraryApi = { request: request, getBooks: getBooks };
+  // ---------------- TANGGAL ----------------
+  // "2026-12-03" atau "2026-12-03 20:00:51" -> objek tanggal (jam diabaikan)
+  function parseDate(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+  }
+
+  // objek tanggal -> "03 Dec 2026"
+  function formatDate(date) {
+    if (!date) return "-";
+    return String(date.getDate()).padStart(2, "0") + " " + MONTHS[date.getMonth()] + " " + date.getFullYear();
+  }
+
+  function addDays(date, days) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+  }
+
+  // Hitung sisa hari dari hari ini sampai batas pengembalian
+  function daysLeftText(due) {
+    if (!due) return "";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = Math.round((due - today) / 86400000);   // 86400000 ms = 1 hari
+    if (diff > 0) return diff + " hari tersisa";
+    if (diff === 0) return "Jatuh tempo hari ini";
+    return "Terlambat " + Math.abs(diff) + " hari";
+  }
+
+  // ---------------- PINJAMAN ----------------
+  // Terjemahkan 1 baris pinjaman dari server ke bentuk kartu milik app.js
+  function toLoan(row) {
+    const due = parseDate(row.due_date);
+    const renewed = (row.renew_count || 0) >= 1;
+    // Belum diperpanjang: tanggal baru kalau diperpanjang = jatuh tempo + 7 hari.
+    // Sudah diperpanjang: jatuh tempo di database sudah mencakup tambahan itu.
+    const extended = due && !renewed ? addDays(due, 7) : due;
+    return {
+      id: String(row.book_id),
+      loanId: row.id,
+      bookId: row.book_id,
+      title: row.title,
+      subtitle: row.title,
+      author: row.author,
+      category: row.category || "Lainnya",
+      borrowDate: formatDate(parseDate(row.borrowed_at)),
+      dueDate: formatDate(due),
+      extendedDueDate: formatDate(extended),
+      daysLeftText: daysLeftText(due),
+      renewed: renewed,
+      coverTheme: COVER_THEMES[row.book_id % COVER_THEMES.length],
+      coverImage: row.cover ? coverUrl(row.cover) : ""
+    };
+  }
+
+  // Sekarang mengembalikan dua hal: daftar pinjaman dan jumlah pinjaman bulan ini
+  async function getLoans() {
+    const body = await request("/api/loans");
+    return {
+      loans: body.loans
+        .filter(function (row) { return row.status === "borrowed"; })
+        .map(toLoan),
+      monthlyBorrowed: body.borrowed_this_month || 0
+    };
+  }
+  async function renewLoan(loanId) {
+    const body = await request("/api/loans/" + loanId + "/renew", { method: "POST" });
+    return body.loan;
+  }
+
+  window.LibraryApi = { request: request, getBooks: getBooks, getLoans: getLoans, renewLoan: renewLoan };
 })();

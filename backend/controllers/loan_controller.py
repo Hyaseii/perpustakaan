@@ -1,6 +1,6 @@
 from core.response import Response, error
 
-from models.loan import Loan
+from models.loan import Loan, LoanNotFoundError, LoanRuleError
 
 
 def loan_data(loan):
@@ -15,12 +15,17 @@ def loan_data(loan):
         "due_date": loan["due_date"],
         "returned_at": loan["returned_at"],
         "status": loan["status"],
+        "renew_count": loan.get("renew_count", 0),
     }
 
 
 def list_loans(request):
-    loans = Loan.find_active_for_user(request.user["id"])
-    return Response(200, {"loans": [loan_data(loan) for loan in loans]})
+    user_id = request.user["id"]
+    loans = Loan.find_active_for_user(user_id)
+    return Response(200, {
+        "loans": [loan_data(loan) for loan in loans],
+        "borrowed_this_month": Loan.count_this_month(user_id),
+    })
 
 
 def borrow(request):
@@ -38,4 +43,17 @@ def borrow(request):
         loan = Loan.create(request.user["id"], book_id=book_id, title=title)
         return Response(201, {"loan": loan_data(loan)})
     except LookupError as exc:
+        return error(str(exc), 409)
+
+def renew(request):
+    raw_id = request.params.get("id", "")
+    if not raw_id.isdigit():
+        return error("Pinjaman tidak ditemukan", 404)
+
+    try:
+        loan = Loan.renew(request.user["id"], int(raw_id))
+        return Response(200, {"loan": loan_data(loan)})
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
         return error(str(exc), 409)
