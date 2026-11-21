@@ -13,13 +13,23 @@ def loan_data(loan):
         "cover": loan["cover"],
         "borrowed_at": loan["borrowed_at"],
         "due_date": loan["due_date"],
+        "confirmed_at": loan.get("confirmed_at"),
         "returned_at": loan["returned_at"],
         "status": loan["status"],
         "renew_count": loan.get("renew_count", 0),
+        "confirm_deadline": loan.get("confirm_deadline"),
+        "confirm_seconds_left": loan.get("confirm_seconds_left"),
     }
 
 
+def _loan_id(request):
+    """Ambil angka {id} dari alamat. Bukan angka -> None."""
+    raw = request.params.get("id", "")
+    return int(raw) if raw.isdigit() else None
+
+
 def list_loans(request):
+    Loan.expire_stale()
     user_id = request.user["id"]
     loans = Loan.find_active_for_user(user_id)
     return Response(200, {
@@ -39,19 +49,56 @@ def borrow(request):
     if book_id is None and not isinstance(title, str):
         return error("Buku tidak valid", 400)
 
+    Loan.expire_stale()
     try:
         loan = Loan.create(request.user["id"], book_id=book_id, title=title)
         return Response(201, {"loan": loan_data(loan)})
-    except LookupError as exc:
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
         return error(str(exc), 409)
 
+
 def renew(request):
-    raw_id = request.params.get("id", "")
-    if not raw_id.isdigit():
+    loan_id = _loan_id(request)
+    if loan_id is None:
         return error("Pinjaman tidak ditemukan", 404)
 
     try:
-        loan = Loan.renew(request.user["id"], int(raw_id))
+        loan = Loan.renew(request.user["id"], loan_id)
+        return Response(200, {"loan": loan_data(loan)})
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
+        return error(str(exc), 409)
+
+
+def cancel(request):
+    loan_id = _loan_id(request)
+    if loan_id is None:
+        return error("Pinjaman tidak ditemukan", 404)
+
+    Loan.expire_stale()
+    try:
+        loan = Loan.cancel(request.user["id"], loan_id)
+        return Response(200, {"loan": loan_data(loan)})
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
+        return error(str(exc), 409)
+
+
+def confirm(request):
+    """Khusus admin."""
+    loan_id = _loan_id(request)
+    if loan_id is None:
+        return error("Pinjaman tidak ditemukan", 404)
+
+    Loan.expire_stale()
+    try:
+        loan = Loan.confirm(loan_id)
         return Response(200, {"loan": loan_data(loan)})
     except LoanNotFoundError as exc:
         return error(str(exc), 404)
