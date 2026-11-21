@@ -622,6 +622,29 @@ a {
   color: var(--navy-800);
 }
 
+/* Pinjaman menunggu konfirmasi admin */
+.badge-status.pending {
+  background-color: var(--surface-muted);
+  color: var(--navy-800);
+  border: 1px solid var(--border-strong);
+}
+
+.loan-countdown {
+  font-variant-numeric: tabular-nums;  /* lebar angka sama, supaya tidak "goyang" tiap detik */
+  font-weight: 700;
+  color: var(--navy-800);
+}
+
+.btn-renew.btn-cancel {
+  color: #b42318;
+  border-color: #fecdca;
+}
+
+.btn-renew.btn-cancel:hover:not(:disabled) {
+  background-color: #fef3f2;
+  border-color: #b42318;
+}
+
 .loan-title {
   font-size: 16.5px;
   font-weight: 700;

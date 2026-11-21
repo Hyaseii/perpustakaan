@@ -381,6 +381,7 @@
     }
 
     renderNotificationDropdown();
+    startCountdown();
   }
 
   window.toggleNotifDropdown = function (e) {
@@ -449,6 +450,15 @@
     if (container) {
       container.innerHTML = state.activeLoans
         .map((loan) => {
+          if (loan.pending) {
+            return `
+              <div class="modal-notif-item">
+                <div class="modal-notif-title">${loan.title}</div>
+                <div class="modal-notif-sub">Menunggu konfirmasi · batas ${loan.confirmDeadline}</div>
+              </div>
+            `;
+          }
+
           const activeDue = loan.renewed ? loan.extendedDueDate : loan.dueDate;
           const statusNote = loan.renewed
             ? "Diperpanjang 1 kali"
@@ -468,7 +478,8 @@
   // =========================================================
   // RENDER CARD HELPERS (ACTIVE LOANS & CATALOG BOOKS)
   // =========================================================
-  function createLoanCardHTML(loan) {
+    function createLoanCardHTML(loan) {
+    const pending = !!loan.pending;
     const activeDue = loan.renewed ? loan.extendedDueDate : loan.dueDate;
     const remainingText = loan.renewed ? "Diperpanjang 1 kali" : loan.daysLeftText;
     const coverMarkup = loan.coverImage
@@ -478,14 +489,58 @@
            <div class="loan-cover-art-author">${loan.author}</div>
          </div>`;
 
+    const badgeClass = pending ? "pending" : loan.renewed ? "renewed" : "";
+    const badgeText = pending ? "Tunggu konfirmasi" : loan.renewed ? "Diperpanjang" : "Dipinjam";
+
+    const datesMarkup = pending
+      ? `<div>
+           <div class="loan-date-label">No. pinjaman</div>
+           <div class="loan-date-value">${loan.loanNumber}</div>
+         </div>
+         <div>
+           <div class="loan-date-label">Konfirmasi paling lambat</div>
+           <div class="loan-date-value">${loan.confirmDeadline}</div>
+         </div>`
+      : `<div>
+           <div class="loan-date-label">Tanggal pinjam</div>
+           <div class="loan-date-value">${loan.borrowDate}</div>
+         </div>
+         <div>
+           <div class="loan-date-label">Batas pengembalian</div>
+           <div class="loan-date-value">${activeDue}</div>
+         </div>`;
+
+    const bottomMarkup = pending
+      ? `<span class="loan-remaining">Sisa waktu
+           <strong class="loan-countdown" data-expires="${loan.expiresAt}">${formatCountdown(loan.expiresAt - Date.now())}</strong>
+         </span>
+         <button type="button" class="btn-renew btn-cancel" onclick="openCancelModal('${loan.id}')">
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+             <line x1="18" y1="6" x2="6" y2="18"></line>
+             <line x1="6" y1="6" x2="18" y2="18"></line>
+           </svg>
+           <span>Batalkan peminjaman</span>
+         </button>`
+      : `<span class="loan-remaining">${remainingText}</span>
+         <button
+           type="button"
+           class="btn-renew"
+           ${loan.renewed ? "disabled" : ""}
+           onclick="openRenewModal('${loan.id}')"
+         >
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+             <polyline points="23 4 23 10 17 10"></polyline>
+             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+           </svg>
+           <span>${loan.renewed ? "Sudah diperpanjang" : "Perpanjang pinjaman"}</span>
+         </button>`;
+
     return `
       <article class="loan-card">
         <div class="loan-card-top">
           ${coverMarkup}
           <div class="loan-info">
-            <span class="badge-status ${loan.renewed ? "renewed" : ""}">${
-      loan.renewed ? "Diperpanjang" : "Dipinjam"
-    }</span>
+            <span class="badge-status ${badgeClass}">${badgeText}</span>
             <h3 class="loan-title">${loan.title}</h3>
             <div class="loan-subtitle">${loan.subtitle || loan.title}</div>
             <div class="loan-author">${loan.author}</div>
@@ -493,29 +548,10 @@
           </div>
         </div>
         <div class="loan-dates-row">
-          <div>
-            <div class="loan-date-label">Tanggal pinjam</div>
-            <div class="loan-date-value">${loan.borrowDate}</div>
-          </div>
-          <div>
-            <div class="loan-date-label">Batas pengembalian</div>
-            <div class="loan-date-value">${activeDue}</div>
-          </div>
+          ${datesMarkup}
         </div>
         <div class="loan-card-bottom">
-          <span class="loan-remaining">${remainingText}</span>
-          <button
-            type="button"
-            class="btn-renew"
-            ${loan.renewed ? "disabled" : ""}
-            onclick="openRenewModal('${loan.id}')"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-            </svg>
-            <span>${loan.renewed ? "Sudah diperpanjang" : "Perpanjang pinjaman"}</span>
-          </button>
+          ${bottomMarkup}
         </div>
       </article>
     `;
@@ -575,6 +611,90 @@
       closeModal("modal-renew-confirm");
       showToast(error.message);                         // mis. "Pinjaman ini sudah diperpanjang 1 kali"
     }
+  };
+
+  // =========================================================
+  // HITUNG MUNDUR & PEMBATALAN BOOKING
+  // =========================================================
+  let countdownTimer = null;
+  let countdownRefreshing = false;
+  let pendingCancelLoanId = null;
+
+  // milidetik -> "23:41:12"
+  function formatCountdown(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return padTwo(h) + ":" + padTwo(m) + ":" + padTwo(s);
+  }
+
+  // Satu "jam weker" untuk semua kartu pending: tiap detik angkanya diperbarui.
+  // Kalau ada yang sudah habis, ambil data terbaru dari server (booking hangus hilang dari daftar).
+  function startCountdown() {
+    if (countdownTimer) return;
+    countdownTimer = setInterval(function () {
+      const spans = document.querySelectorAll(".loan-countdown");
+      let expired = false;
+      spans.forEach(function (el) {
+        const left = Number(el.getAttribute("data-expires")) - Date.now();
+        el.textContent = formatCountdown(left);
+        if (left <= 0) expired = true;
+      });
+      if (expired && !countdownRefreshing) {
+        countdownRefreshing = true;
+        syncCatalogAndLoansFromApi()
+          .then(refreshCurrentPage)
+          .finally(function () { countdownRefreshing = false; });
+      }
+    }, 1000);
+  }
+
+  // Jendela konfirmasi dibuat lewat JS dengan class yang sama seperti jendela Perpanjang,
+  // jadi tidak perlu mengubah HTML di tiga halaman.
+  function ensureCancelModal() {
+    if (document.getElementById("modal-cancel-confirm")) return;
+    const wrap = document.createElement("div");
+    wrap.id = "modal-cancel-confirm";
+    wrap.className = "modal-backdrop hidden";
+    wrap.innerHTML = `
+      <div class="modal-card">
+        <h3 class="modal-title">Batalkan peminjaman?</h3>
+        <div id="cancel-modal-book-title" style="font-weight: 700; font-size: 15px; margin-bottom: 8px;"></div>
+        <p class="modal-desc">Booking dibatalkan dan stok buku langsung dikembalikan. Anda bisa meminjam lagi kapan saja.</p>
+        <div class="modal-actions-stack">
+          <button type="button" class="btn btn-primary btn-block" onclick="confirmCancelLoan()">Ya, batalkan</button>
+          <button type="button" class="btn btn-outline btn-block" onclick="closeModal('modal-cancel-confirm')">Tidak jadi</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+  }
+
+  window.openCancelModal = function (loanId) {
+    const loan = state.activeLoans.find((l) => l.id === loanId);
+    if (!loan || !loan.pending) return;
+    ensureCancelModal();
+    pendingCancelLoanId = loanId;
+    document.getElementById("cancel-modal-book-title").textContent = loan.title;
+    openModal("modal-cancel-confirm");
+  };
+
+  window.confirmCancelLoan = async function () {
+    const loan = state.activeLoans.find((l) => l.id === pendingCancelLoanId);
+    pendingCancelLoanId = null;
+    if (!loan) return;
+
+    try {
+      await window.LibraryApi.cancelLoan(loan.loanId);
+      closeModal("modal-cancel-confirm");
+      showToast(`Peminjaman "${loan.title}" dibatalkan. Stok buku sudah dikembalikan.`);
+    } catch (error) {
+      closeModal("modal-cancel-confirm");
+      showToast(error.message);   // mis. booking ternyata sudah hangus atau sudah dikonfirmasi
+    }
+    await syncCatalogAndLoansFromApi();   // apa pun hasilnya, tampilkan data terbaru
+    refreshCurrentPage();
   };
 
   // =========================================================
@@ -825,7 +945,9 @@
     const alreadyBorrowed = state.activeLoans.some((l) => l.id === book.id);
     if (borrowBtn) {
       if (alreadyBorrowed) {
-        borrowBtn.textContent = "Sudah ada di Pinjaman Saya";
+        borrowBtn.textContent = state.activeLoans.find((l) => l.id === book.id).pending
+          ? "Menunggu konfirmasi admin"
+          : "Sudah ada di Pinjaman Saya";
         borrowBtn.disabled = true;
       } else if (state.activeLoans.length >= 5) {
         borrowBtn.textContent = "Batas maksimal 5 buku tercapai";
@@ -879,7 +1001,12 @@
         state.activeLoans.length
       );
       saveState();
-      showToast(`Berhasil meminjam "${book.title}". Silakan ambil buku di meja layanan.`);
+      const created = state.activeLoans.find((l) => l.id === book.id);
+      showToast(
+        created
+          ? `Booking berhasil. Tunjukkan nomor ${created.loanNumber} ke resepsionis dalam 24 jam.`
+          : `Booking "${book.title}" berhasil.`
+      );
       refreshCurrentPage();
       renderBookDetail(book.id);
     } catch (error) {

@@ -64,6 +64,13 @@
     return String(date.getDate()).padStart(2, "0") + " " + MONTHS[date.getMonth()] + " " + date.getFullYear();
   }
 
+  // "2026-11-22 16:02:29" -> "22 Nov 2026, 16:02"
+  function formatDateTime(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(value || ""));
+    if (!m) return "-";
+    return m[3] + " " + MONTHS[Number(m[2]) - 1] + " " + m[1] + ", " + m[4] + ":" + m[5];
+  }
+
   function addDays(date, days) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
   }
@@ -84,18 +91,23 @@
   function toLoan(row) {
     const due = parseDate(row.due_date);
     const renewed = (row.renew_count || 0) >= 1;
-    // Belum diperpanjang: tanggal baru kalau diperpanjang = jatuh tempo + 7 hari.
-    // Sudah diperpanjang: jatuh tempo di database sudah mencakup tambahan itu.
+    const pending = row.status === "pending";
     const extended = due && !renewed ? addDays(due, 7) : due;
     return {
       id: String(row.book_id),
       loanId: row.id,
       bookId: row.book_id,
+      status: row.status,
+      pending: pending,
+      loanNumber: "#" + String(row.id).padStart(4, "0"),
+      confirmDeadline: formatDateTime(row.confirm_deadline),
+      // kapan hitung mundur habis, menurut jam browser (server hanya mengirim "sisa detik")
+      expiresAt: Date.now() + (Number(row.confirm_seconds_left) || 0) * 1000,
       title: row.title,
       subtitle: row.title,
       author: row.author,
       category: row.category || "Lainnya",
-      borrowDate: formatDate(parseDate(row.borrowed_at)),
+      borrowDate: formatDate(parseDate(row.confirmed_at || row.borrowed_at)),
       dueDate: formatDate(due),
       extendedDueDate: formatDate(extended),
       daysLeftText: daysLeftText(due),
@@ -110,7 +122,7 @@
     const body = await request("/api/loans");
     return {
       loans: body.loans
-        .filter(function (row) { return row.status === "borrowed"; })
+        .filter(function (row) { return row.status === "borrowed" || row.status === "pending"; })
         .map(toLoan),
       monthlyBorrowed: body.borrowed_this_month || 0
     };
@@ -120,5 +132,15 @@
     return body.loan;
   }
 
-  window.LibraryApi = { request: request, getBooks: getBooks, getLoans: getLoans, renewLoan: renewLoan };
+  async function cancelLoan(loanId) {
+    const body = await request("/api/loans/" + loanId + "/cancel", { method: "POST" });
+    return body.loan;
+  }
+
+  window.LibraryApi = { 
+    request: request, 
+    getBooks: getBooks, 
+    getLoans: getLoans, 
+    renewLoan: renewLoan, 
+    cancelLoan: cancelLoan};
 })();
