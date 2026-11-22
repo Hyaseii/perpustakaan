@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date, timedelta
 
 from database.db import cursor
 
+MAX_DUE_DAYS = 90        # jatuh tempo paling lama 90 hari sejak tanggal pinjam
 RENEW_DAYS = 7           # satu kali perpanjangan = tambah 7 hari
 MAX_RENEWALS = 1         # boleh diperpanjang berapa kali
 LOAN_DAYS = 14           # masa pinjam, dihitung sejak admin mengonfirmasi
@@ -49,6 +50,37 @@ class Loan:
             return cur.fetchall()
 
     @staticmethod
+    def set_due_date(loan_id, new_due):
+        """Admin mengubah jatuh tempo pinjaman yang sedang dipinjam."""
+        with cursor() as cur:
+            cur.execute(
+                "SELECT id, status, confirmed_at FROM peminjaman WHERE id = %s FOR UPDATE",
+                (loan_id,),
+            )
+            loan = cur.fetchone()
+
+            if loan is None:
+                raise LoanNotFoundError("Pinjaman tidak ditemukan")
+            if loan["status"] != "borrowed":
+                raise LoanRuleError(
+                    "Jatuh tempo hanya bisa diubah untuk pinjaman yang sedang dipinjam"
+                )
+
+            start = loan["confirmed_at"].date() if loan["confirmed_at"] else date.today()
+            if new_due < start:
+                raise LoanRuleError("Jatuh tempo tidak boleh sebelum tanggal pinjam")
+            if new_due > start + timedelta(days=MAX_DUE_DAYS):
+                raise LoanRuleError(
+                    f"Jatuh tempo paling lama {MAX_DUE_DAYS} hari sejak tanggal pinjam"
+                )
+
+            cur.execute(
+                "UPDATE peminjaman SET due_date = %s WHERE id = %s",
+                (new_due, loan_id),
+            )
+            return Loan._select_one(cur, loan_id)
+
+    @staticmethod
     def expire_stale():
         """Booking yang lewat CONFIRM_HOURS jam tanpa konfirmasi jadi 'expired', stok kembali."""
         with cursor() as cur:
@@ -71,8 +103,10 @@ class Loan:
             return len(stale)
 
     @staticmethod
-    def create(user_id, book_id=None, title=None):
-        """Booking buku: status pending, stok langsung berkurang."""
+    def create(user_id, book_id=None, title=None, confirmed=False, due_date=None):
+        """Booking buku (pending, stok langsung berkurang).
+        Dengan confirmed=True (dipakai admin di meja layanan) langsung berstatus borrowed,
+        jatuh tempo = due_date (bawaan: hari ini + LOAN_DAYS)."""
         with cursor() as cur:
             if book_id is not None:
                 cur.execute(
@@ -107,17 +141,25 @@ class Loan:
                 (user_id, book["id"]),
             )
             if cur.fetchone() is not None:
-                raise LoanRuleError("Buku ini sedang Anda pinjam")
+                raise LoanRuleError("Buku ini sedang dipinjam atau dibooking oleh anggota yang sama")
 
             cur.execute(
                 "UPDATE buku SET stock = stock - 1 WHERE id = %s",
                 (book["id"],),
             )
-            cur.execute(
-                "INSERT INTO peminjaman (user_id, book_id, status) "
-                "VALUES (%s, %s, 'pending')",
-                (user_id, book["id"]),
-            )
+            if confirmed:
+                due = due_date or (date.today() + timedelta(days=LOAN_DAYS))
+                cur.execute(
+                    "INSERT INTO peminjaman (user_id, book_id, status, confirmed_at, due_date) "
+                    "VALUES (%s, %s, 'borrowed', NOW(), %s)",
+                    (user_id, book["id"], due),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO peminjaman (user_id, book_id, status) "
+                    "VALUES (%s, %s, 'pending')",
+                    (user_id, book["id"]),
+                )
             return Loan._select_one(cur, cur.lastrowid)
 
     @staticmethod
@@ -224,3 +266,104 @@ class Loan:
                 (user_id,),
             )
             return cur.fetchone()["total"]
+    @staticmethod
+    def mark_returned(loan_id):
+        """Admin menerima buku kembali: borrowed -> returned, stok bertambah."""
+        with cursor() as cur:
+            cur.execute(
+                "SELECT id, book_id, status FROM peminjaman WHERE id = %s FOR UPDATE",
+                (loan_id,),
+            )
+            loan = cur.fetchone()
+
+            if loan is None:
+                raise LoanNotFoundError("Pinjaman tidak ditemukan")
+            if loan["status"] == "pending":
+                raise LoanRuleError("Pinjaman belum dikonfirmasi, konfirmasi dulu sebelum dikembalikan")
+            if loan["status"] == "returned":
+                raise LoanRuleError("Pinjaman ini sudah dikembalikan")
+            if loan["status"] != "borrowed":
+                raise LoanRuleError("Pinjaman ini sudah dibatalkan atau hangus")
+
+            cur.execute(
+                "UPDATE peminjaman SET status = 'returned', returned_at = NOW() WHERE id = %s",
+                (loan_id,),
+            )
+            cur.execute(
+                "UPDATE buku SET stock = stock + 1 WHERE id = %s",
+                (loan["book_id"],),
+            )
+            return Loan._select_one(cur, loan_id)
+
+    @staticmethod
+    def admin_search(status="all", q="", period="all", page=1, per_page=8):
+        """Daftar transaksi untuk halaman admin: dengan pencarian, filter, dan halaman."""
+        conditions = []
+        params = []
+
+        # "Terlambat" dan "Dipinjam" dipisah berdasarkan jatuh tempo
+        if status == "overdue":
+            conditions.append("p.status = 'borrowed' AND p.due_date < CURRENT_DATE()")
+        elif status == "borrowed":
+            conditions.append("p.status = 'borrowed' AND p.due_date >= CURRENT_DATE()")
+        elif status in ("pending", "returned", "cancelled", "expired"):
+            conditions.append("p.status = %s")
+            params.append(status)
+
+        q = q.strip()
+        if q:
+            like = f"%{q}%"
+            parts = ["u.full_name LIKE %s", "u.username LIKE %s", "b.title LIKE %s"]
+            params += [like, like, like]
+            code = q.upper().removeprefix("PN-").lstrip("0")   # "PN-0008" -> "8"
+            if code.isdigit():
+                parts.append("p.id = %s")
+                params.append(int(code))
+            conditions.append("(" + " OR ".join(parts) + ")")
+
+        if period == "today":
+            conditions.append("DATE(p.borrowed_at) = CURRENT_DATE()")
+        elif period == "week":
+            conditions.append("YEARWEEK(p.borrowed_at, 1) = YEARWEEK(CURRENT_DATE(), 1)")
+        elif period == "month":
+            conditions.append(
+                "YEAR(p.borrowed_at) = YEAR(CURRENT_DATE()) "
+                "AND MONTH(p.borrowed_at) = MONTH(CURRENT_DATE())"
+            )
+
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        base = (
+            "FROM peminjaman p "
+            "JOIN buku b ON b.id = p.book_id "
+            "JOIN `user` u ON u.id = p.user_id"
+        )
+
+        with cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total " + base + where, tuple(params))
+            total = cur.fetchone()["total"]
+
+            cur.execute(
+                "SELECT p.id, p.user_id, p.book_id, p.status, p.borrowed_at, p.confirmed_at, "
+                "p.due_date, p.returned_at, b.title, u.username, u.full_name "
+                + base + where
+                + " ORDER BY p.borrowed_at DESC, p.id DESC LIMIT %s OFFSET %s",
+                tuple(params) + (per_page, (page - 1) * per_page),
+            )
+            rows = cur.fetchall()
+
+        return rows, total
+
+    @staticmethod
+    def admin_summary():
+        """Angka untuk tiga kartu di atas halaman Peminjaman admin."""
+        with cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(SUM(status = 'borrowed'), 0) AS borrowed, "
+                "COALESCE(SUM(status = 'pending'), 0) AS pending, "
+                "COALESCE(SUM(status = 'borrowed' AND due_date < CURRENT_DATE()), 0) AS overdue, "
+                "COALESCE(SUM(status = 'returned' AND DATE(returned_at) = CURRENT_DATE()), 0) "
+                "AS returned_today "
+                "FROM peminjaman"
+            )
+            row = cur.fetchone()
+        return {key: int(value) for key, value in row.items()}

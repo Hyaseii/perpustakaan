@@ -1,4 +1,4 @@
-from controllers import auth_controller, book_controller, loan_controller
+from controllers import auth_controller, book_controller, loan_controller, admin_controller
 from core.router import Router
 
 router = Router()
@@ -18,3 +18,8 @@ router.add("POST", "/api/loans", loan_controller.borrow, login=True)
 router.add("POST", "/api/loans/{id}/renew", loan_controller.renew, login=True)
 router.add("POST", "/api/loans/{id}/cancel", loan_controller.cancel, login=True)
 router.add("POST", "/api/loans/{id}/confirm", loan_controller.confirm, roles=("admin",))
+router.add("GET", "/api/admin/dashboard", admin_controller.dashboard, roles=("admin",))
+router.add("GET", "/api/admin/loans", admin_controller.loans, roles=("admin",))
+router.add("POST", "/api/loans/{id}/return", loan_controller.give_back, roles=("admin",))
+router.add("POST", "/api/admin/loans", admin_controller.create_loan, roles=("admin",))
+router.add("POST", "/api/loans/{id}/due-date", loan_controller.set_due_date, roles=("admin",))
