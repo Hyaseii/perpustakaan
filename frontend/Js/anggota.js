@@ -1,97 +1,389 @@
-//ANGGOTA
+//ANGGOTA — halaman admin, tersambung ke database lewat /api/admin/members
 lucide.createIcons();
 
-const modal = document.getElementById('memberModal');
-const tombolBuka = document.getElementById('openModal');
-const tombolTutup = document.getElementById('closeModal');
-const tombolBatal = document.getElementById('cancelModal');
+(function () {
+  "use strict";
 
-function bukaModal() {
-    modal.classList.add('show');
-}
+  const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const URUTAN = { recent: "kunjungan terbaru", name: "nama A-Z", borrowed: "paling banyak pinjam" };
 
-function tutupModal() {
-    modal.classList.remove('show');
-}
+  // ---------------- alat bantu kecil ----------------
+  function angka(n) { return Number(n).toLocaleString("en-US"); }
+  function isi(el, teks) { if (el) el.textContent = teks; }
 
-tombolBuka.addEventListener('click', bukaModal);
-tombolTutup.addEventListener('click', tutupModal);
-tombolBatal.addEventListener('click', tutupModal);
-
-modal.addEventListener('click', function (e) {
-    if (e.target === modal) {
-        tutupModal();
-    }
-});
-
-document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-        tutupModal();
-    }
-});
-
-document.querySelectorAll('.toggle-pw').forEach(function (tombol) {
-    tombol.addEventListener('click', function () {
-        const input = tombol.parentElement.querySelector('input');
-        const sedangTersembunyi = input.type === 'password';
-
-        input.type = sedangTersembunyi ? 'text' : 'password';
-        tombol.innerHTML = '<i data-lucide="' + (sedangTersembunyi ? 'eye' : 'eye-off') + '"></i>';
-        lucide.createIcons();
+  function esc(teks) {
+    return String(teks).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
-});
+  }
 
-const editModal = document.getElementById('editModal');
-const deleteModal = document.getElementById('deleteModal');
+  function tgl(teks) {                      // "2026-11-22" -> "22 Nov 2026"
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(teks || ""));
+    return m ? m[3] + " " + BULAN[Number(m[2]) - 1] + " " + m[1] : "";
+  }
 
-function tutupSemuaModal() {
-    document.querySelectorAll('.modal-overlay').forEach(function (m) {
-        m.classList.remove('show');
+  function toast(teks, galat) {
+    let kotak = document.getElementById("admin-toast");
+    if (!kotak) {
+      kotak = document.createElement("div");
+      kotak.id = "admin-toast";
+      kotak.style.cssText = "position:fixed;right:24px;bottom:24px;z-index:9999;padding:12px 18px;" +
+        "border-radius:12px;font-size:13px;font-weight:600;color:#fff;max-width:360px;" +
+        "box-shadow:0 8px 24px rgba(15,23,42,.25);transition:opacity .25s;opacity:0;";
+      document.body.appendChild(kotak);
+    }
+    kotak.style.background = galat ? "#dc2626" : "#16325c";
+    kotak.textContent = teks;
+    kotak.style.opacity = "1";
+    clearTimeout(kotak._timer);
+    kotak._timer = setTimeout(function () { kotak.style.opacity = "0"; }, 3500);
+  }
+
+  async function panggil(url, opsi) {
+    const respons = await fetch(url, opsi);
+    const data = await respons.json().catch(function () { return {}; });
+    if (respons.status === 401) {
+      window.location.href = "/Pages/index";
+      throw new Error("Sesi berakhir, silakan login lagi");
+    }
+    if (!respons.ok) {
+      const galat = new Error(data.message || "Permintaan gagal");
+      galat.status = respons.status;
+      throw galat;
+    }
+    return data;
+  }
+
+  function kirimJson(data) {
+    return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
+  }
+
+  // ---------------- elemen halaman ----------------
+  const badan = document.getElementById("memberBody");
+  const formCari = document.querySelector(".toolbar");
+  const inputCari = document.getElementById("searchInput");
+  const pilihStatus = document.getElementById("statusFilter");
+  const pilihUrut = document.getElementById("sortFilter");
+  const pager = document.querySelector(".table-foot .pager");
+  const tombolSebelum = pager.querySelectorAll("button")[0];
+  const tombolBerikut = pager.querySelectorAll("button")[1];
+  const pilPager = pager.querySelector(".pill");
+
+  // penangguhan belum ada: sembunyikan opsinya; onchange bawaan memuat ulang halaman, kita ganti
+  const opsiTidakAktif = pilihStatus.querySelector('option[value="suspended"]');
+  if (opsiTidakAktif) opsiTidakAktif.remove();
+  pilihStatus.removeAttribute("onchange");
+
+  const state = { q: "", status: "all", sort: "recent", page: 1 };
+  let daftar = [];
+
+  // ---------------- alamat (?q=...&status=...&sort=...&page=...) ----------------
+  function setKontrol() {
+    inputCari.value = state.q;
+    pilihStatus.value = state.status;
+    pilihUrut.value = state.sort;
+    if (!pilihStatus.value) { pilihStatus.value = "all"; state.status = "all"; }
+    if (!pilihUrut.value) { pilihUrut.value = "recent"; state.sort = "recent"; }
+  }
+
+  function bacaUrl() {
+    const p = new URLSearchParams(window.location.search);
+    state.q = p.get("q") || "";
+    state.status = p.get("status") || "all";
+    state.sort = p.get("sort") || "recent";
+    const hal = Number(p.get("page"));
+    state.page = hal > 0 ? hal : 1;
+    setKontrol();
+  }
+
+  function simpanUrl() {
+    const p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.status !== "all") p.set("status", state.status);
+    if (state.sort !== "recent") p.set("sort", state.sort);
+    if (state.page > 1) p.set("page", String(state.page));
+    const qs = p.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
+  }
+
+  // ---------------- menggambar tabel ----------------
+  function barisHtml(m) {
+    return '<tr data-id="' + m.id + '">' +
+      '<td class="muted">' + esc(m.code) + "</td>" +
+      '<td><div class="person"><span class="av-lg">' + esc(m.initials) + "</span><b>" + esc(m.name) + "</b></div></td>" +
+      '<td class="muted">' + esc(m.email) + "</td>" +
+      "<td>" + m.loans_total + "</td>" +
+      "<td>" + m.visits_total + "</td>" +
+      "<td>" + (m.last_visit ? tgl(m.last_visit) : "&mdash;") + "</td>" +
+      '<td><span class="status status-active">Aktif</span></td>' +
+      '<td><div class="actions">' +
+        '<button type="button" class="icon-act icon-edit" data-aksi="edit" aria-label="Ubah"><i data-lucide="pencil"></i></button>' +
+        '<button type="button" class="icon-act icon-delete" data-aksi="delete" aria-label="Hapus"><i data-lucide="trash-2"></i></button>' +
+      "</div></td></tr>";
+  }
+
+  function nonaktifkanTombol(tombol, mati) {
+    tombol.disabled = mati;
+    tombol.style.opacity = mati ? "0.5" : "";
+    tombol.style.cursor = mati ? "not-allowed" : "";
+  }
+
+  function cariKartu(judul) {
+    return Array.from(document.querySelectorAll(".stat")).find(function (k) {
+      const s = k.querySelector(".stat-top span");
+      return s && s.textContent.trim() === judul;
     });
-}
+  }
 
-document.getElementById('memberBody').addEventListener('click', function (e) {
-    const tombol = e.target.closest('.icon-edit, .icon-delete');
+  function isiKartu(r) {
+    const terdaftar = cariKartu("Anggota terdaftar");
+    if (terdaftar) isi(terdaftar.querySelector(".stat-number"), angka(r.total));
+    const aktif = cariKartu("Anggota aktif");
+    if (aktif) {
+      isi(aktif.querySelector(".stat-number"), angka(r.total - r.suspended));
+      isi(aktif.querySelector(".stat-note"), "+" + r.new_month + " bulan ini");
+    }
+    const tangguh = cariKartu("Ditangguhkan");
+    if (tangguh) isi(tangguh.querySelector(".stat-number"), angka(r.suspended));
+  }
+
+  function gambarTabel(data) {
+    const rows = data.members;
+    badan.innerHTML = rows.length === 0
+      ? '<tr><td colspan="8" class="muted">Tidak ada anggota yang cocok.</td></tr>'
+      : rows.map(barisHtml).join("");
+    lucide.createIcons();
+
+    const awal = rows.length ? (data.page - 1) * data.per_page + 1 : 0;
+    const akhir = rows.length ? awal + rows.length - 1 : 0;
+    const sekarang = new Date();
+    isi(document.querySelector(".section-sub"),
+      "Total pinjaman dan kunjungan sampai " + tgl(sekarang.getFullYear() + "-" +
+      String(sekarang.getMonth() + 1).padStart(2, "0") + "-" + String(sekarang.getDate()).padStart(2, "0")) +
+      " \u2022 Diurutkan berdasarkan " + URUTAN[state.sort]);
+    isi(document.querySelector(".table-foot > .muted"),
+      "Menampilkan " + awal + "-" + akhir + " dari " + angka(data.total) + " anggota \u2022 " +
+      data.per_page + " anggota per halaman");
+    isi(pilPager, data.page + " / " + data.pages);
+    nonaktifkanTombol(tombolSebelum, data.page <= 1);
+    nonaktifkanTombol(tombolBerikut, data.page >= data.pages);
+  }
+
+  // ---------------- mengambil data ----------------
+  async function muat() {
+    const params = new URLSearchParams({ status: state.status, sort: state.sort, page: String(state.page) });
+    if (state.q) params.set("q", state.q);
+    try {
+      const data = await panggil("/api/admin/members?" + params.toString());
+      if (data.page > data.pages) {
+        state.page = data.pages;
+        simpanUrl();
+        return muat();
+      }
+      daftar = data.members;
+      gambarTabel(data);
+      isiKartu(data.summary);
+    } catch (galat) {
+      if (galat.status === 403) { window.location.href = "/Pages/dashboard"; return; }
+      console.warn("Gagal memuat anggota:", galat);
+      toast("Gagal memuat data anggota dari server.", true);
+    }
+  }
+
+  // ---------------- cari, urutan, halaman ----------------
+  function terapkanFilter() {
+    state.q = inputCari.value.trim();
+    state.status = pilihStatus.value;
+    state.sort = pilihUrut.value;
+    state.page = 1;
+    simpanUrl();
+    muat();
+  }
+  formCari.addEventListener("submit", function (e) { e.preventDefault(); terapkanFilter(); });
+  pilihStatus.addEventListener("change", terapkanFilter);
+  pilihUrut.addEventListener("change", terapkanFilter);
+
+  tombolSebelum.addEventListener("click", function () {
+    if (state.page > 1) { state.page--; simpanUrl(); muat(); }
+  });
+  tombolBerikut.addEventListener("click", function () {
+    if (!tombolBerikut.disabled) { state.page++; simpanUrl(); muat(); }
+  });
+
+  // ---------------- jendela (modal) ----------------
+  const modalTambah = document.getElementById("memberModal");
+  const modalUbah = document.getElementById("editModal");
+  const modalHapus = document.getElementById("deleteModal");
+  const formTambah = modalTambah.querySelector("form");
+  const formUbah = document.getElementById("editForm");
+  const formHapus = document.getElementById("deleteForm");
+
+  function buka(modal) { modal.classList.add("show"); }
+  function tutup(modal) { modal.classList.remove("show"); }
+
+  [modalTambah, modalUbah, modalHapus].forEach(function (modal) {
+    modal.querySelectorAll("[data-close], #closeModal, #cancelModal").forEach(function (t) {
+      t.addEventListener("click", function () { tutup(modal); });
+    });
+    modal.addEventListener("click", function (e) { if (e.target === modal) tutup(modal); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { tutup(modalTambah); tutup(modalUbah); tutup(modalHapus); }
+  });
+
+  // tombol mata di kolom kata sandi
+  document.querySelectorAll(".toggle-pw").forEach(function (tombol) {
+    tombol.addEventListener("click", function () {
+      const input = tombol.closest(".pw").querySelector("input");
+      const tampil = input.type === "password";
+      input.type = tampil ? "text" : "password";
+      tombol.innerHTML = '<i data-lucide="' + (tampil ? "eye" : "eye-off") + '"></i>';
+      lucide.createIcons();
+    });
+  });
+
+  // kolom NPM dan Nomor HP ditambahkan lewat JS (form temanmu belum punya)
+  function buatBarisNpmHp(kunci, npmHanyaBaca) {
+    const baris = document.createElement("div");
+    baris.className = "field-row";
+    baris.innerHTML =
+      '<div class="field"><label for="' + kunci + 'Npm">NPM</label>' +
+        '<input type="text" id="' + kunci + 'Npm" inputmode="numeric" maxlength="12" ' +
+        (npmHanyaBaca ? 'readonly class="readonly"' : 'placeholder="12 digit angka" required') + "></div>" +
+      '<div class="field"><label for="' + kunci + 'Hp">Nomor HP (opsional)</label>' +
+        '<input type="tel" id="' + kunci + 'Hp" inputmode="numeric" maxlength="13" placeholder="08xxxxxxxxxx"></div>';
+    return baris;
+  }
+  document.getElementById("password").closest(".field-row").before(buatBarisNpmHp("n", false));
+  document.getElementById("editEmail").closest(".field").after(buatBarisNpmHp("e", true));
+
+  // hanya angka di kolom NPM dan HP
+  ["nNpm", "nHp", "eHp"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", function (e) {
+      e.target.value = e.target.value.replace(/\D/g, "");
+    });
+  });
+
+  // ---------------- tambah anggota ----------------
+  document.getElementById("openModal").addEventListener("click", function () {
+    formTambah.reset();
+    ["password", "password2"].forEach(function (id) { document.getElementById(id).type = "password"; });
+    document.getElementById("statusAnggota").value = "active";
+    document.getElementById("statusAnggota").disabled = true;        // penangguhan belum ada
+    document.getElementById("totalPinjam").closest(".field-row").style.display = "none";   // angka hasil hitungan
+    document.getElementById("kunjunganTerakhir").closest(".field").style.display = "none";
+    buka(modalTambah);
+  });
+
+  formTambah.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (document.getElementById("password").value !== document.getElementById("password2").value) {
+      toast("Konfirmasi kata sandi tidak cocok.", true);
+      return;
+    }
+    const tombol = formTambah.querySelector('button[type="submit"]');
+    tombol.disabled = true;
+    try {
+      const npm = document.getElementById("nNpm").value;
+      const data = await panggil("/api/admin/members", kirimJson({
+        name: document.getElementById("nama").value,
+        npm: npm,
+        email: document.getElementById("email").value,
+        phone: document.getElementById("nHp").value,
+        password: document.getElementById("password").value
+      }));
+      tutup(modalTambah);
+      toast(data.member.name + " ditambahkan sebagai " + data.member.code + ".");
+      state.q = npm;                  // tampilkan baris barunya (yang belum pernah berkunjung ada di urutan bawah)
+      state.status = "all";
+      state.page = 1;
+      setKontrol();
+      simpanUrl();
+      await muat();
+    } catch (galat) {
+      toast(galat.message, true);     // jendela tetap terbuka supaya bisa diperbaiki
+    } finally {
+      tombol.disabled = false;
+    }
+  });
+
+  // ---------------- ubah dan hapus ----------------
+  let idDiubah = null;
+
+  badan.addEventListener("click", function (e) {
+    const tombol = e.target.closest("button[data-aksi]");
     if (!tombol) return;
+    const m = daftar.find(function (x) { return x.id === Number(tombol.closest("tr").dataset.id); });
+    if (!m) return;
 
-    const tr = tombol.closest('tr');
-    const sel = tr.querySelectorAll('td');
-    const id = sel[0].textContent.trim();
-    const nama = tr.querySelector('.person b').textContent.trim();
-    const email = sel[2].textContent.trim();
-    const aktif = tr.querySelector('.status').classList.contains('status-active');
-
-    if (tombol.classList.contains('icon-edit')) {
-    document.getElementById('editId').value = id;
-    document.getElementById('editSub').textContent = id + ' \u2022 ' + nama;
-    document.getElementById('editNama').value = nama;
-    document.getElementById('editEmail').value = email;
-    document.getElementById('editPinjam').value = sel[3].textContent.trim();
-    document.getElementById('editKunjungan').value = sel[4].textContent.trim();
-    document.getElementById('editTerakhir').value = keTanggalInput(sel[5].textContent);
-    document.getElementById('editStatus').value = aktif ? 'active' : 'inactive';
-    editModal.classList.add('show');
+    if (tombol.dataset.aksi === "edit") {
+      idDiubah = m.id;
+      document.getElementById("editSub").textContent = m.code + " \u2022 " + m.name;
+      document.getElementById("editId").value = m.code;
+      document.getElementById("editNama").value = m.name;
+      document.getElementById("editEmail").value = m.email;
+      document.getElementById("eNpm").value = m.npm || "";
+      document.getElementById("eHp").value = m.phone || "";
+      // angka hasil hitungan: hanya untuk dilihat
+      const status = document.getElementById("editStatus");
+      status.value = "active";
+      status.disabled = true;
+      [["editPinjam", m.loans_total], ["editKunjungan", m.visits_total]].forEach(function (p) {
+        const el = document.getElementById(p[0]);
+        el.value = p[1];
+        el.readOnly = true;
+      });
+      const terakhir = document.getElementById("editTerakhir");
+      terakhir.value = m.last_visit ? String(m.last_visit).slice(0, 10) : "";
+      terakhir.disabled = true;
+      buka(modalUbah);
     } else {
-        document.getElementById('deleteId').value = id;
-        document.getElementById('deleteSub').textContent = id + ' \u2022 ' + nama;
-        deleteModal.classList.add('show');
+      document.getElementById("deleteId").value = m.id;
+      document.getElementById("deleteSub").textContent = m.code + " \u2022 " + m.name;
+      buka(modalHapus);
     }
-});
+  });
 
-document.querySelectorAll('#editModal [data-close], #deleteModal [data-close]').forEach(function (t) {
-    t.addEventListener('click', tutupSemuaModal);
-});
+  formUbah.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!idDiubah) return;
+    const tombol = formUbah.querySelector('button[type="submit"]');
+    tombol.disabled = true;
+    try {
+      await panggil("/api/admin/members/" + idDiubah, kirimJson({
+        name: document.getElementById("editNama").value,
+        email: document.getElementById("editEmail").value,
+        phone: document.getElementById("eHp").value
+      }));
+      tutup(modalUbah);
+      toast("Data anggota diperbarui.");
+      await muat();
+    } catch (galat) {
+      toast(galat.message, true);
+    } finally {
+      tombol.disabled = false;
+    }
+  });
 
-[editModal, deleteModal].forEach(function (m) {
-    m.addEventListener('click', function (e) {
-        if (e.target === m) tutupSemuaModal();
-    });
-});
+  formHapus.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const id = document.getElementById("deleteId").value;
+    const tombol = formHapus.querySelector('button[type="submit"]');
+    tombol.disabled = true;
+    try {
+      await panggil("/api/admin/members/" + id + "/delete", { method: "POST" });
+      tutup(modalHapus);
+      toast("Anggota dihapus.");
+      await muat();
+    } catch (galat) {
+      tutup(modalHapus);
+      toast(galat.message, true);
+    } finally {
+      tombol.disabled = false;
+    }
+  });
 
-function keTanggalInput(teks) {
-    const bulan = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', Mei: '05', Jun: '06',
-                    Jul: '07', Agu: '08', Sep: '09', Okt: '10', Nov: '11', Des: '12' };
-    const p = teks.trim().split(' ');
-    if (p.length !== 3 || !bulan[p[1]]) return '';
-    return p[2] + '-' + bulan[p[1]] + '-' + p[0].padStart(2, '0');
-}
+  // ---------------- mulai ----------------
+  bacaUrl();
+  muat();
+})();

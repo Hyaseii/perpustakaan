@@ -557,6 +557,42 @@
     `;
   }
 
+    function createHistoryCardHTML(item) {
+    const coverMarkup = item.coverImage
+      ? `<img src="${item.coverImage}" alt="${item.title}" class="loan-cover-img" />`
+      : `<div class="loan-cover-art ${item.coverTheme || "theme-ochre"}">
+           <div class="loan-cover-art-title">${item.title}</div>
+           <div class="loan-cover-art-author">${item.author}</div>
+         </div>`;
+
+    return `
+      <article class="loan-card">
+        <div class="loan-card-top">
+          ${coverMarkup}
+          <div class="loan-info">
+            <span class="badge-status renewed">Dikembalikan</span>
+            <h3 class="loan-title">${item.title}</h3>
+            <div class="loan-subtitle">${item.title}</div>
+            <div class="loan-author">${item.author}</div>
+          </div>
+        </div>
+        <div class="loan-dates-row">
+          <div>
+            <div class="loan-date-label">Tanggal pinjam</div>
+            <div class="loan-date-value">${item.borrowDate}</div>
+          </div>
+          <div>
+            <div class="loan-date-label">Tanggal kembali</div>
+            <div class="loan-date-value">${item.returnedDate}</div>
+          </div>
+        </div>
+        <div class="loan-card-bottom">
+          <span class="loan-remaining">${item.note}</span>
+        </div>
+      </article>
+    `;
+  }
+
   function createBookCardHTML(book, includeActionButton) {
     return `
       <div class="book-item-wrapper">
@@ -1038,9 +1074,10 @@
     }
 
     if (historyContainer) {
-      if (state.loanHistory.length === 0) {
-        historyContainer.innerHTML = `<p class="empty-history-text">Belum ada pengembalian pada periode ini. Pinjaman yang selesai akan muncul di sini.</p>`;
-      }
+      historyContainer.innerHTML =
+        state.loanHistory.length === 0
+          ? `<p class="empty-history-text">Belum ada pengembalian pada periode ini. Pinjaman yang selesai akan muncul di sini.</p>`
+          : `<div class="loans-grid">${state.loanHistory.map(createHistoryCardHTML).join("")}</div>`;
     }
   }
 
@@ -1127,6 +1164,7 @@
       ]);
       state.catalogBooks = results[0];
       state.activeLoans = results[1].loans;
+      state.loanHistory = results[1].history;
       state.user.monthlyBorrowed = results[1].monthlyBorrowed;
     } catch (error) {
       if (error.status === 401) {
