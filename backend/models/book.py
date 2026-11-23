@@ -36,3 +36,18 @@ class Book:
                 (book_id,),
             )
             return cur.fetchone()
+    
+    @staticmethod
+    def find_for_admin(text):
+        """Cari buku dari teks petugas: judul persis atau kode BK-007. Hasil: daftar."""
+        text = text.strip()
+        if not text:
+            return []
+        upper = text.upper()
+        book_id = int(upper[3:]) if upper.startswith("BK-") and upper[3:].isdigit() else 0
+        with cursor() as cur:
+            cur.execute(
+                "SELECT id, title, stock FROM buku WHERE id = %s OR title = %s LIMIT 5",
+                (book_id, text),
+            )
+            return cur.fetchall()

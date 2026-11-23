@@ -90,3 +90,22 @@ class User:
                 (password_hash, user_id),
             )
             return cur.rowcount
+
+    @staticmethod
+    def find_for_admin(text):
+        """Cari anggota dari teks yang diketik petugas: NPM, ID anggota (MB-0008),
+        username, atau nama lengkap. Hasil: daftar (kosong = tidak ada, lebih dari 1 = ambigu)."""
+        text = text.strip()
+        if not text:
+            return []
+        upper = text.upper()
+        member_id = int(upper[3:]) if upper.startswith("MB-") and upper[3:].isdigit() else 0
+        with cursor() as cur:
+            cur.execute(
+                "SELECT id, username, full_name FROM `user` "
+                "WHERE role = 'member' "
+                "AND (id = %s OR npm = %s OR username = %s OR full_name = %s) "
+                "LIMIT 5",
+                (member_id, text, text, text),
+            )
+            return cur.fetchall()

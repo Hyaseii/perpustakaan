@@ -222,6 +222,16 @@
     color: #dc2626;
 }
 
+.status-pending { 
+    background: #ede9fe; 
+    color: #5b21b6; 
+}
+
+.status-cancelled, .status-expired { 
+    background: #f1f5f9; 
+    color: #64748b; 
+}
+
 .icon-edit {
     color: var(--blue);
     background: #eaf1ff;
@@ -230,6 +240,13 @@
 .icon-edit:hover {
     background: var(--blue-soft);
 }
+
+.row-actions { display: flex; gap: 8px; }
+.icon-confirm { color: #15803d; background: #dcfce7; }
+.icon-confirm:hover { background: #bbf7d0; }
+.icon-return { color: #1e3a8a; background: #dbeafe; }
+.icon-return:hover { background: #bfdbfe; }
+.icon-act:disabled { opacity: .5; cursor: not-allowed; }
 
 #loanModal .field input,
 #loanModal .field select,

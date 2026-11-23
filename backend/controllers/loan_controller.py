@@ -1,5 +1,5 @@
 from core.response import Response, error
-
+from datetime import date
 from models.loan import Loan, LoanNotFoundError, LoanRuleError
 
 
@@ -99,6 +99,41 @@ def confirm(request):
     Loan.expire_stale()
     try:
         loan = Loan.confirm(loan_id)
+        return Response(200, {"loan": loan_data(loan)})
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
+        return error(str(exc), 409)
+
+def give_back(request):
+    """Khusus admin: buku diterima kembali."""
+    loan_id = _loan_id(request)
+    if loan_id is None:
+        return error("Pinjaman tidak ditemukan", 404)
+
+    Loan.expire_stale()
+    try:
+        loan = Loan.mark_returned(loan_id)
+        return Response(200, {"loan": loan_data(loan)})
+    except LoanNotFoundError as exc:
+        return error(str(exc), 404)
+    except LoanRuleError as exc:
+        return error(str(exc), 409)
+
+def set_due_date(request):
+    """Khusus admin: ubah jatuh tempo pinjaman yang sedang dipinjam."""
+    loan_id = _loan_id(request)
+    if loan_id is None:
+        return error("Pinjaman tidak ditemukan", 404)
+
+    raw = request.json().get("due_date")
+    try:
+        new_due = date.fromisoformat(str(raw))
+    except ValueError:
+        return error("Format jatuh tempo harus YYYY-MM-DD", 400)
+
+    try:
+        loan = Loan.set_due_date(loan_id, new_due)
         return Response(200, {"loan": loan_data(loan)})
     except LoanNotFoundError as exc:
         return error(str(exc), 404)
