@@ -28,3 +28,7 @@ router.add("POST", "/api/admin/books", admin_controller.create_book, roles=("adm
 router.add("POST", "/api/admin/books/{id}", admin_controller.update_book, roles=("admin",))
 router.add("POST", "/api/admin/books/{id}/delete", admin_controller.delete_book, roles=("admin",))
 router.add("POST", "/api/admin/books/{id}/cover", admin_controller.set_book_cover, roles=("admin",))
+router.add("GET", "/api/admin/members", admin_controller.members, roles=("admin",))
+router.add("POST", "/api/admin/members", admin_controller.create_member, roles=("admin",))
+router.add("POST", "/api/admin/members/{id}", admin_controller.update_member, roles=("admin",))
+router.add("POST", "/api/admin/members/{id}/delete", admin_controller.delete_member, roles=("admin",))

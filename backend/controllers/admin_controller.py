@@ -9,10 +9,122 @@ from models.book import CATEGORIES, Book, BookNotFoundError, BookRuleError
 from models.loan import MAX_DUE_DAYS, Loan, LoanNotFoundError, LoanRuleError
 from models.stats import Stats
 from models.user import User
+from models.member import Member, MemberNotFoundError, MemberRuleError
 from utils.text import initials
+import re
 
 PER_PAGE = 8   # transaksi per halaman, sesuai tulisan di desain
 BOOKS_PER_PAGE = 8
+MEMBERS_PER_PAGE = 8
+
+# huruf (termasuk beraksen), spasi, titik, apostrof, tanda hubung; 3-100 karakter
+NAME_RE = re.compile(r"(?:[^\W\d_]|[ .'\-]){3,100}")
+NPM_RE = re.compile(r"[0-9]{12}")
+PHONE_RE = re.compile(r"08[0-9]{8,11}")
+EMAIL_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]+")
+
+
+def _member_row(row):
+    name = row["full_name"] or row["username"]
+    return {
+        "id": row["id"],
+        "code": f"MB-{row['id']:04d}",
+        "name": name,
+        "initials": initials(name),
+        "npm": row["npm"],
+        "email": row["email"],
+        "phone": row["phone"],
+        "loans_total": row["loans_total"],
+        "visits_total": row["visits_total"],
+        "last_visit": row["last_visit"],
+        "status": "active",
+    }
+
+
+def _check_profile(body):
+    """Periksa nama, email, HP. Hasil: ((nama, email, hp), None) atau (None, pesan)."""
+    name = " ".join(str(body.get("name") or "").split())
+    email = str(body.get("email") or "").strip()
+    phone = str(body.get("phone") or "").replace(" ", "").replace("-", "")
+
+    if not NAME_RE.fullmatch(name):
+        return None, "Nama 3-100 karakter: huruf, spasi, titik, apostrof, dan tanda hubung"
+    if len(email) > 255 or not EMAIL_RE.fullmatch(email):
+        return None, "Format email tidak valid"
+    if phone and not PHONE_RE.fullmatch(phone):
+        return None, "Nomor HP harus diawali 08 dan 10-13 digit angka"
+    return (name, email, phone or None), None
+
+
+def members(request):
+    q = request.query.get("q", "")
+    status = request.query.get("status", "all")
+    sort = request.query.get("sort", "recent")
+    raw_page = request.query.get("page", "1")
+    page = int(raw_page) if raw_page.isdigit() and int(raw_page) > 0 else 1
+
+    rows, total = Member.admin_search(q, status, sort, page, MEMBERS_PER_PAGE)
+    return Response(200, {
+        "members": [_member_row(row) for row in rows],
+        "total": total,
+        "page": page,
+        "per_page": MEMBERS_PER_PAGE,
+        "pages": max(1, ceil(total / MEMBERS_PER_PAGE)),
+        "summary": Member.admin_summary(),
+    })
+
+
+def create_member(request):
+    body = request.json()
+    profile, problem = _check_profile(body)
+    if problem:
+        return error(problem, 400)
+
+    npm = str(body.get("npm") or "").strip()
+    password = str(body.get("password") or "")
+    if not NPM_RE.fullmatch(npm):
+        return error("NPM harus 12 digit angka", 400)
+    if not 8 <= len(password) <= 128:
+        return error("Kata sandi 8-128 karakter", 400)
+
+    try:
+        row = Member.admin_create(profile[0], npm, profile[1], profile[2], password)
+        return Response(201, {"member": _member_row(row)})
+    except MemberRuleError as exc:
+        return error(str(exc), 409)
+
+
+def update_member(request):
+    member_id = _path_id(request)
+    if member_id is None:
+        return error("Anggota tidak ditemukan", 404)
+
+    profile, problem = _check_profile(request.json())
+    if problem:
+        return error(problem, 400)
+
+    try:
+        row = Member.admin_update(member_id, *profile)
+        return Response(200, {"member": _member_row(row)})
+    except MemberNotFoundError as exc:
+        return error(str(exc), 404)
+    except MemberRuleError as exc:
+        return error(str(exc), 409)
+
+
+def delete_member(request):
+    member_id = _path_id(request)
+    if member_id is None:
+        return error("Anggota tidak ditemukan", 404)
+
+    Loan.expire_stale()
+    try:
+        Member.admin_delete(member_id)
+        return Response(200, {"message": "Anggota dihapus"})
+    except MemberNotFoundError as exc:
+        return error(str(exc), 404)
+    except MemberRuleError as exc:
+        return error(str(exc), 409)
 
 
 def _path_id(request):
