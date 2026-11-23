@@ -163,16 +163,51 @@
   // HELPERS & UI UTILITIES
   // =========================================================
   function getInitials(name) {
-    if (!name) return "MC";
+    if (!name) return "?";
     const parts = name.trim().split(/\s+/);
     if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    // Jika default "Maya Putri", tampilkan MC sesuai desain atau inisial nama setelah diedit
-    if (name.trim() === "Maya Putri" || name.trim() === "Maya Putri S.") return "MC";
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
   function padTwo(num) {
     return String(num).padStart(2, "0");
+  }
+
+  const BULAN_PENUH = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
+                      "Agustus", "September", "Oktober", "November", "Desember"];
+  const HARI_EN = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+  const BULAN_EN = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY",
+                    "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+
+  // gaya tanggal di banner Home: "MONDAY, 23 NOVEMBER 2026"
+  function formatHeroDate(d) {
+    return HARI_EN[d.getDay()] + ", " + padTwo(d.getDate()) + " " + BULAN_EN[d.getMonth()] + " " + d.getFullYear();
+  }
+
+  function findStatCard(label) {
+    return Array.from(document.querySelectorAll(".stat-card")).find(function (card) {
+      const el = card.querySelector(".stat-label");
+      return el && el.textContent.trim() === label;
+    });
+  }
+
+  // nama bulan di kartu statistik + angka kunjungan bulan ini (dari database)
+  function renderMonthlyStatCards() {
+    const bulan = BULAN_PENUH[new Date().getMonth()];
+
+    const pinjam = findStatCard("Dipinjam bulan ini");
+    if (pinjam) {
+      const note = pinjam.querySelector(".stat-footnote");
+      if (note) note.textContent = "Peminjaman " + bulan;
+    }
+
+    const kunjungan = findStatCard("Kunjungan perpustakaan");
+    if (kunjungan) {
+      const nilai = kunjungan.querySelector(".stat-value");
+      const note = kunjungan.querySelector(".stat-footnote");
+      if (nilai) nilai.textContent = padTwo(state.user.visitsThisMonth || 0);
+      if (note) note.textContent = "Kunjungan " + bulan;
+    }
   }
 
   window.showToast = function (message) {
@@ -744,6 +779,7 @@
     const monthlyStatEl = document.getElementById("stat-monthly-loans");
     const loansContainer = document.getElementById("home-loans-grid");
     const eventBtn = document.getElementById("btn-save-seat");
+    const heroDate = document.querySelector(".hero-date");
 
     if (greetingEl) greetingEl.textContent = `A new chapter, ${firstName}.`;
     if (metaEl) {
@@ -759,6 +795,9 @@
     if (eventBtn) {
       eventBtn.textContent = state.eventSaved ? "Seat reserved ✓" : "Save your seat →";
     }
+
+    if (heroDate) heroDate.textContent = formatHeroDate(new Date());
+    renderMonthlyStatCards();
 
     renderHomeCatalog();
   }
@@ -1079,6 +1118,7 @@
           ? `<p class="empty-history-text">Belum ada pengembalian pada periode ini. Pinjaman yang selesai akan muncul di sini.</p>`
           : `<div class="loans-grid">${state.loanHistory.map(createHistoryCardHTML).join("")}</div>`;
     }
+    renderMonthlyStatCards();
   }
 
   // =========================================================
@@ -1088,7 +1128,6 @@
     const bannerEl = document.getElementById("profile-updated-banner");
     const headerNameEl = document.getElementById("profile-header-name");
     const headerRoleEl = document.getElementById("profile-header-role");
-
     const npmEl = document.getElementById("profile-npm");
     const prodiEl = document.getElementById("profile-prodi");
     const phoneEl = document.getElementById("profile-phone");
@@ -1097,8 +1136,10 @@
     const memberIdEl = document.getElementById("profile-member-id");
 
     if (bannerEl) {
+      bannerEl.textContent = "Profil berhasil diperbarui";
       bannerEl.classList.toggle("hidden", !state.profileUpdatedDemo);
     }
+    state.profileUpdatedDemo = false;   // banner hanya tampil sekali, tepat setelah menyimpan
     if (headerNameEl) headerNameEl.textContent = state.user.fullName;
     if (headerRoleEl) headerRoleEl.textContent = state.user.status;
 
@@ -1134,38 +1175,67 @@
     showToast("Contoh perubahan profil diisi.");
   };
 
-  window.handleSaveProfile = function (e) {
+  window.handleSaveProfile = async function (e) {
     e.preventDefault();
     const nameVal = document.getElementById("edit-fullname").value.trim();
     const emailVal = document.getElementById("edit-email").value.trim();
     const phoneVal = document.getElementById("edit-phone").value.trim();
+    const tombol = e.target.querySelector('button[type="submit"]');
+    if (tombol) tombol.disabled = true;
 
-    if (nameVal) state.user.fullName = nameVal;
-    if (emailVal) state.user.email = emailVal;
-    state.user.phone = phoneVal || "Belum ditambahkan";
-    state.profileUpdatedDemo = true;
+    try {
+      await window.LibraryApi.updateProfile({ name: nameVal, email: emailVal, phone: phoneVal });
+      await syncCatalogAndLoansFromApi();      // ambil profil terbaru dari database
+      state.profileUpdatedDemo = true;
+      closeModal("modal-edit-profile");
+      initSharedShell("profile");
+      initProfilePage();
+      saveState();
+      showToast("Profil berhasil diperbarui.");
+    } catch (error) {
+      showToast(error.message);                 // mis. "Email sudah dipakai akun lain"
+    } finally {
+      if (tombol) tombol.disabled = false;
+    }
+  };
 
+  window.handleLogout = async function () {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });   // akhiri sesi di server juga
+    } catch (e) {
+      /* abaikan: tetap lanjut ke halaman login */
+    }
+    state.isLoggedIn = false;
     saveState();
-    closeModal("modal-edit-profile");
-    initSharedShell("profile");
-    initProfilePage();
-    showToast("Profil berhasil diperbarui.");
+    window.location.href = "/Pages/index";
   };
 
 
     // =========================================================
   // SINKRON DATA DARI SERVER (buku dari database)
   // =========================================================
-      async function syncCatalogAndLoansFromApi() {
+    async function syncCatalogAndLoansFromApi() {
     try {
       const results = await Promise.all([
         window.LibraryApi.getBooks(),
-        window.LibraryApi.getLoans()
+        window.LibraryApi.getLoans(),
+        window.LibraryApi.getProfile()
       ]);
       state.catalogBooks = results[0];
       state.activeLoans = results[1].loans;
       state.loanHistory = results[1].history;
       state.user.monthlyBorrowed = results[1].monthlyBorrowed;
+
+      // identitas akun yang sedang login (menggantikan data contoh "Maya Putri")
+      const p = results[2];
+      state.user.fullName = p.name;
+      state.user.npm = p.npm;
+      state.user.memberId = p.code;
+      state.user.email = p.email;
+      state.user.phone = p.phone || "Belum ditambahkan";
+      state.user.prodi = "Belum diisi";      // belum ada kolom program studi di database
+      state.user.status = "Anggota";
+      state.user.visitsThisMonth = p.visits_this_month;
     } catch (error) {
       if (error.status === 401) {
         window.location.href = "/Pages/index";

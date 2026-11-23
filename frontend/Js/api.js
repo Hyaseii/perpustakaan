@@ -159,10 +159,27 @@
     return body.loan;
   }
 
+  async function getProfile() {
+    const body = await request("/api/profile");
+    return body.profile;
+  }
+
+  async function updateProfile(data) {
+    const body = await request("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    return body.profile;
+  }
+
   window.LibraryApi = { 
     request: request, 
     getBooks: getBooks, 
     getLoans: getLoans, 
     renewLoan: renewLoan, 
-    cancelLoan: cancelLoan};
+    cancelLoan: cancelLoan,
+    getProfile: getProfile,
+    updateProfile: updateProfile
+  };
 })();
