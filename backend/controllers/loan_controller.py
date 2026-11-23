@@ -32,8 +32,10 @@ def list_loans(request):
     Loan.expire_stale()
     user_id = request.user["id"]
     loans = Loan.find_active_for_user(user_id)
+    history = Loan.find_history_for_user(user_id)
     return Response(200, {
         "loans": [loan_data(loan) for loan in loans],
+        "history": [loan_data(loan) for loan in history],
         "borrowed_this_month": Loan.count_this_month(user_id),
     })
 

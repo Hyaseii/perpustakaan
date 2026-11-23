@@ -117,13 +117,35 @@
     };
   }
 
+    // Pinjaman yang sudah dikembalikan -> kartu riwayat
+  function toHistory(row) {
+    const due = parseDate(row.due_date);
+    const back = parseDate(row.returned_at);
+    let catatan = "Dikembalikan tepat waktu";
+    if (due && back && back > due) {
+      catatan = "Terlambat " + Math.round((back - due) / 86400000) + " hari";
+    }
+    return {
+      id: String(row.id),
+      title: row.title,
+      author: row.author,
+      category: row.category || "Lainnya",
+      borrowDate: formatDate(parseDate(row.confirmed_at || row.borrowed_at)),
+      returnedDate: formatDate(back),
+      note: catatan,
+      coverTheme: COVER_THEMES[row.book_id % COVER_THEMES.length],
+      coverImage: row.cover ? coverUrl(row.cover) : ""
+    };
+  }
+
   // Sekarang mengembalikan dua hal: daftar pinjaman dan jumlah pinjaman bulan ini
-  async function getLoans() {
+    async function getLoans() {
     const body = await request("/api/loans");
     return {
       loans: body.loans
         .filter(function (row) { return row.status === "borrowed" || row.status === "pending"; })
         .map(toLoan),
+      history: (body.history || []).map(toHistory),
       monthlyBorrowed: body.borrowed_this_month || 0
     };
   }

@@ -367,3 +367,15 @@ class Loan:
             )
             row = cur.fetchone()
         return {key: int(value) for key, value in row.items()}
+
+    @staticmethod
+    def find_history_for_user(user_id, limit=10):
+        """Riwayat pengembalian milik user (terbaru dulu)."""
+        with cursor() as cur:
+            cur.execute(
+                _LOAN_SELECT
+                + "WHERE p.user_id = %s AND p.status = 'returned' "
+                "ORDER BY p.returned_at DESC, p.id DESC LIMIT %s",
+                (user_id, limit),
+            )
+            return cur.fetchall()

@@ -4,14 +4,153 @@ from math import ceil
 from controllers.loan_controller import loan_data
 from core.response import Response, error
 
-from models.book import Book
+from utils.files import CoverError, delete_cover_file, save_cover
+from models.book import CATEGORIES, Book, BookNotFoundError, BookRuleError
 from models.loan import MAX_DUE_DAYS, Loan, LoanNotFoundError, LoanRuleError
 from models.stats import Stats
 from models.user import User
 from utils.text import initials
 
 PER_PAGE = 8   # transaksi per halaman, sesuai tulisan di desain
+BOOKS_PER_PAGE = 8
 
+
+def _path_id(request):
+    raw = request.params.get("id", "")
+    return int(raw) if raw.isdigit() else None
+
+
+def _canonical_category(text):
+    """'self-growth' / 'SELF-GROWTH' -> 'Self-growth'. Tidak dikenal -> None."""
+    for name in CATEGORIES:
+        if name.lower() == str(text).strip().lower():
+            return name
+    return None
+
+
+def _book_row(row):
+    available = row["stock"]
+    return {
+        "id": row["id"],
+        "code": f"BK-{row['id']:03d}",
+        "title": row["title"],
+        "author": row["author"],
+        "category": row["category"],
+        "cover": row["cover"],
+        "total": available + row["active"],       # stok total = tersedia + yang sedang keluar
+        "available": available,
+        "status": "available" if available > 0 else "on-loan",
+    }
+
+
+def _book_fields(body):
+    """Periksa isian buku. Hasil: ((judul, penulis, kategori, total), None) atau (None, pesan)."""
+    title = str(body.get("title") or "").strip()
+    author = str(body.get("author") or "").strip()
+    category = _canonical_category(body.get("category") or "")
+    try:
+        total = int(body.get("total"))
+    except (TypeError, ValueError):
+        total = -1
+
+    if not title or len(title) > 255:
+        return None, "Judul wajib diisi (maksimal 255 karakter)"
+    if not author or len(author) > 255:
+        return None, "Penulis wajib diisi (maksimal 255 karakter)"
+    if category is None:
+        return None, "Kategori tidak valid"
+    if not 0 <= total <= 9999:
+        return None, "Stok harus berupa angka 0 sampai 9999"
+    return (title, author, category, total), None
+
+
+def books(request):
+    Loan.expire_stale()
+
+    q = request.query.get("q", "")
+    category = _canonical_category(request.query.get("category", "")) or "all"
+    status = request.query.get("status", "all")
+    raw_page = request.query.get("page", "1")
+    page = int(raw_page) if raw_page.isdigit() and int(raw_page) > 0 else 1
+
+    rows, total = Book.admin_search(q, category, status, page, BOOKS_PER_PAGE)
+    return Response(200, {
+        "books": [_book_row(row) for row in rows],
+        "total": total,
+        "page": page,
+        "per_page": BOOKS_PER_PAGE,
+        "pages": max(1, ceil(total / BOOKS_PER_PAGE)),
+        "summary": Book.admin_summary(),
+    })
+
+
+def create_book(request):
+    fields, problem = _book_fields(request.json())
+    if problem:
+        return error(problem, 400)
+    if fields[3] < 1:
+        return error("Stok minimal 1 untuk buku baru", 400)
+
+    try:
+        row = Book.admin_create(*fields)
+        return Response(201, {"book": _book_row(row)})
+    except BookRuleError as exc:
+        return error(str(exc), 409)
+
+
+def update_book(request):
+    book_id = _path_id(request)
+    if book_id is None:
+        return error("Buku tidak ditemukan", 404)
+    fields, problem = _book_fields(request.json())
+    if problem:
+        return error(problem, 400)
+
+    Loan.expire_stale()
+    try:
+        row = Book.admin_update(book_id, *fields)
+        return Response(200, {"book": _book_row(row)})
+    except BookNotFoundError as exc:
+        return error(str(exc), 404)
+    except BookRuleError as exc:
+        return error(str(exc), 409)
+
+
+def delete_book(request):
+    book_id = _path_id(request)
+    if book_id is None:
+        return error("Buku tidak ditemukan", 404)
+
+    Loan.expire_stale()
+    try:
+        cover = Book.admin_delete(book_id)
+    except BookNotFoundError as exc:
+        return error(str(exc), 404)
+    except BookRuleError as exc:
+        return error(str(exc), 409)
+
+    delete_cover_file(cover)   # berkas sampulnya ikut dihapus
+    return Response(200, {"message": "Buku dihapus"})
+
+
+def set_book_cover(request):
+    book_id = _path_id(request)
+    if book_id is None:
+        return error("Buku tidak ditemukan", 404)
+
+    try:
+        path = save_cover(book_id, request.json().get("image"))
+    except CoverError as exc:
+        return error(str(exc), 400)
+
+    try:
+        row, old_cover = Book.admin_set_cover(book_id, path)
+    except BookNotFoundError as exc:
+        delete_cover_file(path)    # bukunya ternyata tidak ada: buang berkas yang baru disimpan
+        return error(str(exc), 404)
+
+    delete_cover_file(old_cover)   # sampul lama diganti
+    return Response(200, {"book": _book_row(row)})
 
 def dashboard(request):
     # ?date=2026-11-22 -> tanggal acuan; kosong = hari ini
