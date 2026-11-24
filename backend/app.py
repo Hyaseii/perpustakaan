@@ -12,8 +12,12 @@ from routes import router
 
 ROOT = os.path.realpath(FRONTEND_DIR)
 ALLOWED_DIRS = {os.path.normcase(n) for n in ("Pages", "Style", "Js", "assets")}
-PROTECTED = [os.path.join(ROOT, "Pages", "dashboard.html")]  # wajib login
 LOGIN_PAGE = "/Pages/index"
+
+# Hak akses halaman di Pages/. Halaman lain di Pages/ OTOMATIS khusus admin.
+PAGES_DIR = os.path.join(ROOT, "Pages")
+PUBLIC_PAGES = {os.path.normcase(n) for n in ("index.html", "forgot.html", "reset.html")}  # siapa saja
+MEMBER_PAGES = {os.path.normcase(n) for n in ("dashboard.html",)}  # wajib login
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -49,6 +53,21 @@ def resolve_static(url_path):
     return full
 
 
+def access_level(full):
+    """'public', 'member', atau 'admin' untuk sebuah file."""
+    folder = os.path.normcase(os.path.dirname(full))
+    pages = os.path.normcase(PAGES_DIR)
+    if not (folder + os.sep).startswith(pages + os.sep):
+        return "public"  # Style, Js, assets
+    if folder == pages:
+        name = os.path.normcase(os.path.basename(full))
+        if name in PUBLIC_PAGES:
+            return "public"
+        if name in MEMBER_PAGES:
+            return "member"
+    return "admin"  # default aman: khusus admin
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Perpustakaan"
 
@@ -72,9 +91,9 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             error("Terjadi kesalahan pada server", 500).send(self)
 
-    def _logged_in(self, request):
+    def _current_user(self, request):
         user_id = session.get_user_id(request.cookies.get(session.COOKIE_NAME))
-        return user_id is not None and User.find_by_id(user_id) is not None
+        return User.find_by_id(user_id) if user_id else None
 
     def _serve_static(self, request):
         full = resolve_static(request.path)
@@ -88,12 +107,15 @@ class Handler(BaseHTTPRequestHandler):
             self._redirect(request.path[:-5] + ("?" + query if query else ""))
             return
 
-        is_protected = any(
-            os.path.exists(p) and os.path.samefile(full, p) for p in PROTECTED
-        )
-        if is_protected and not self._logged_in(request):
-            self._redirect(LOGIN_PAGE)
-            return
+        level = access_level(full)
+        if level != "public":
+            user = self._current_user(request)
+            if user is None:
+                self._redirect(LOGIN_PAGE)
+                return
+            if level == "admin" and user["role"] != "admin":
+                error("Anda tidak punya akses", 403).send(self)
+                return
 
         ext = os.path.splitext(full)[1].lower()
         with open(full, "rb") as f:
@@ -105,12 +127,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
-
-    def _redirect(self, location):
-        self.send_response(302)
-        self.send_header("Location", location)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
 
     def _redirect(self, location):
         self.send_response(302)

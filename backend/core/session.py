@@ -45,3 +45,9 @@ def destroy(token):
     """Hapus sesi (logout). Aman dipanggil walau token tidak ada."""
     with _lock:
         _sessions.pop(token, None)
+
+def destroy_user(user_id):
+    """Hapus semua sesi milik satu user (dipakai setelah reset password)."""
+    with _lock:
+        for t in [t for t, s in _sessions.items() if s["user_id"] == user_id]:
+            del _sessions[t]

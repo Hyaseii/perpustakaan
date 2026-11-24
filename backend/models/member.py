@@ -15,13 +15,13 @@ class MemberRuleError(Exception):
 # urutan yang diizinkan (isi ORDER BY dipilih dari daftar ini, tidak pernah dari kiriman pengguna)
 _SORTS = {
     "recent": "v.last_visit IS NULL, v.last_visit DESC, u.id DESC",
-    "name": "COALESCE(u.full_name, u.username) ASC, u.id ASC",
+    "name": "COALESCE(u.full_name) ASC, u.id ASC",
     "borrowed": "loans_total DESC, u.id ASC",
 }
 
 # total pinjam = pinjaman yang pernah dikonfirmasi; kunjungan = yang berstatus tercatat
 _ADMIN_SELECT = (
-    "SELECT u.id, u.username, u.npm, u.full_name, u.email, u.phone, u.created_at, "
+    "SELECT u.id, u.npm, u.full_name, u.email, u.phone, u.created_at, "
     "COALESCE(l.total, 0) AS loans_total, "
     "COALESCE(v.total, 0) AS visits_total, v.last_visit "
     "FROM `user` u "
@@ -49,8 +49,8 @@ class Member:
         q = q.strip()
         if q:
             like = f"%{q}%"
-            parts = ["u.full_name LIKE %s", "u.username LIKE %s", "u.email LIKE %s", "u.npm LIKE %s"]
-            params += [like, like, like, like]
+            parts = ["u.full_name LIKE %s", "u.email LIKE %s", "u.npm LIKE %s"]
+            params += [like, like, like]
             code = q.upper().removeprefix("MB-").lstrip("0")   # "MB-0008" -> "8"
             if code.isdigit():
                 parts.append("u.id = %s")
@@ -90,12 +90,12 @@ class Member:
 
     @staticmethod
     def admin_create(name, npm, email, phone, password):
-        """Admin mendaftarkan anggota. Untuk anggota, username = NPM (sama seperti pendaftaran)."""
+        """Admin mendaftarkan anggota."""
         with cursor() as cur:
             cur.execute(
-                "SELECT username, email FROM `user` "
-                "WHERE username = %s OR npm = %s OR email = %s LIMIT 1",
-                (npm, npm, email),
+                "SELECT email FROM `user` "
+                "WHERE npm = %s OR email = %s LIMIT 1",
+                (npm, email),
             )
             clash = cur.fetchone()
             if clash is not None:
@@ -105,9 +105,9 @@ class Member:
 
             try:
                 cur.execute(
-                    "INSERT INTO `user` (username, npm, full_name, email, phone, password_hash, role) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, 'member')",
-                    (npm, npm, name, email, phone, hash_password(password)),
+                    "INSERT INTO `user` (npm, full_name, email, phone, password_hash, role) "
+                    "VALUES (%s, %s, %s, %s, %s, 'member')",
+                    (npm, name, email, phone, hash_password(password)),
                 )
             except mysql.connector.Error as exc:
                 if exc.errno == 1062:          # data kembar yang lolos dari pemeriksaan di atas
@@ -180,7 +180,7 @@ class Member:
         """Data profil milik satu akun (untuk halaman member), plus kunjungan bulan ini."""
         with cursor() as cur:
             cur.execute(
-                "SELECT id, username, npm, full_name, email, phone, role, created_at "
+                "SELECT id, npm, full_name, email, phone, role, created_at "
                 "FROM `user` WHERE id = %s",
                 (user_id,),
             )

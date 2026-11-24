@@ -2,8 +2,8 @@ from datetime import timedelta
 from utils.text import initials
 from database.db import cursor
 
-CHART_DAYS = 7        # grafik "buku dipinjam per hari": 7 hari, berakhir di tanggal acuan
-TOP_BORROWERS = 4     # jumlah baris "Peminjam paling aktif"
+CHART_DAYS = 7        # grafik 7 hari, berakhir di tanggal acuan
+TOP_BORROWERS = 4     # jumlah baris "Peminjam paling aktif" & "Pengunjung paling aktif"
 RECENT_LOANS = 5      # jumlah baris "Peminjaman terbaru"
 
 
@@ -14,9 +14,11 @@ class Stats:
         week_ago = ref - timedelta(days=7)
 
         with cursor() as cur:
-            # buku: jumlah judul dan jumlah eksemplar yang masih tersedia di rak
+            # buku: jumlah judul dan eksemplar yang sudah ada sampai tanggal acuan
             cur.execute(
-                "SELECT COUNT(*) AS titles, COALESCE(SUM(stock), 0) AS available FROM buku"
+                "SELECT COUNT(*) AS titles, COALESCE(SUM(stock), 0) AS available "
+                "FROM buku WHERE DATE(created_at) <= %s",
+                (ref,),
             )
             books = cur.fetchone()
 
@@ -29,18 +31,17 @@ class Stats:
             )
             loans = cur.fetchone()
 
-            # anggota: total, dan yang mendaftar di bulan tanggal acuan
+            # anggota: total yang sudah terdaftar sampai tanggal acuan, dan yang mendaftar di bulan acuan
             cur.execute(
                 "SELECT COUNT(*) AS total, "
                 "COALESCE(SUM(YEAR(created_at) = YEAR(%s) AND MONTH(created_at) = MONTH(%s)), 0) "
                 "AS new_month "
-                "FROM `user` WHERE role = 'member'",
-                (ref, ref),
+                "FROM `user` WHERE role = 'member' AND DATE(created_at) <= %s",
+                (ref, ref, ref),
             )
             members = cur.fetchone()
 
-            # jumlah pinjaman dikonfirmasi per hari, dari 7 hari sebelum acuan sampai acuan.
-            # Satu query ini cukup untuk: angka hari ini, pembanding minggu lalu, dan grafik.
+            # jumlah pinjaman dikonfirmasi per hari, dari 7 hari sebelum acuan sampai acuan
             cur.execute(
                 "SELECT DATE(confirmed_at) AS day, COUNT(*) AS total FROM peminjaman "
                 "WHERE status IN ('borrowed', 'returned') "
@@ -49,6 +50,16 @@ class Stats:
                 (week_ago, ref),
             )
             per_day = {row["day"]: row["total"] for row in cur.fetchall()}
+
+            # jumlah pengunjung tercatat per hari, dari 7 hari sebelum acuan sampai acuan
+            cur.execute(
+                "SELECT DATE(visit_date) AS day, COUNT(*) AS total FROM kunjungan "
+                "WHERE status = 'recorded' "
+                "AND DATE(visit_date) BETWEEN %s AND %s "
+                "GROUP BY DATE(visit_date)",
+                (week_ago, ref),
+            )
+            visits_day = {row["day"]: row["total"] for row in cur.fetchall()}
 
             # buku yang dikembalikan pada tanggal acuan
             cur.execute(
@@ -60,21 +71,34 @@ class Stats:
 
             # anggota paling aktif meminjam di bulan tanggal acuan
             cur.execute(
-                "SELECT u.id, u.username, u.full_name, COUNT(*) AS total "
+                "SELECT u.id, u.full_name, COUNT(*) AS total "
                 "FROM peminjaman p JOIN `user` u ON u.id = p.user_id "
                 "WHERE p.status IN ('borrowed', 'returned') "
                 "AND YEAR(p.confirmed_at) = YEAR(%s) AND MONTH(p.confirmed_at) = MONTH(%s) "
-                "GROUP BY u.id, u.username, u.full_name "
+                "GROUP BY u.id, u.full_name "
                 "ORDER BY total DESC, u.id "
                 "LIMIT %s",
                 (ref, ref, TOP_BORROWERS),
             )
             top_rows = cur.fetchall()
 
+            # pengunjung paling aktif pada bulan tanggal acuan
+            cur.execute(
+                "SELECT u.id, u.full_name, COUNT(*) AS total "
+                "FROM kunjungan k JOIN `user` u ON u.id = k.user_id "
+                "WHERE k.status = 'recorded' AND k.user_id IS NOT NULL "
+                "AND YEAR(k.visit_date) = YEAR(%s) AND MONTH(k.visit_date) = MONTH(%s) "
+                "GROUP BY u.id, u.full_name "
+                "ORDER BY total DESC, u.id "
+                "LIMIT %s",
+                (ref, ref, TOP_BORROWERS),
+            )
+            top_visit_rows = cur.fetchall()
+
             # transaksi terbaru (termasuk yang masih menunggu konfirmasi)
             cur.execute(
                 "SELECT p.id, p.status, p.borrowed_at, p.confirmed_at, p.due_date, "
-                "b.title, u.username, u.full_name "
+                "b.title, u.full_name "
                 "FROM peminjaman p "
                 "JOIN buku b ON b.id = p.book_id "
                 "JOIN `user` u ON u.id = p.user_id "
@@ -95,32 +119,45 @@ class Stats:
         borrowed = int(loans["borrowed"])
         pending = int(loans["pending"])
 
-        # susun 7 hari lengkap (hari tanpa pinjaman diisi 0), urut dari yang terlama
         days = [ref - timedelta(days=n) for n in range(CHART_DAYS - 1, -1, -1)]
 
-        top = []
-        for row in top_rows:
-            name = row["full_name"] or row["username"]
-            top.append({
+        top = [
+            {
                 "member_id": f"MB-{row['id']:04d}",
-                "name": name,
-                "initials": initials(name),
+                "name": row["full_name"],
+                "initials": initials(row["full_name"]),
                 "total": row["total"],
-            })
+            }
+            for row in top_rows
+        ]
 
-        recent = []
-        for row in recent_rows:
-            recent.append({
+        top_visitors = [
+            {
+                "member_id": f"MB-{row['id']:04d}",
+                "name": row["full_name"],
+                "initials": initials(row["full_name"]),
+                "total": row["total"],
+            }
+            for row in top_visit_rows
+        ]
+
+        recent = [
+            {
                 "id": row["id"],
-                "borrower": row["full_name"] or row["username"],
+                "borrower": row["full_name"],
                 "title": row["title"],
                 "status": row["status"],
                 "loaned_at": row["confirmed_at"] or row["borrowed_at"],
                 "due_date": row["due_date"],
-            })
+            }
+            for row in recent_rows
+        ]
 
         return {
             "date": ref,
+            "visitors_today": visits_day.get(ref, 0),
+            "visitors_last_week": visits_day.get(week_ago, 0),
+            "visitors_per_day": [{"date": d, "total": visits_day.get(d, 0)} for d in days],
             "borrowed_today": per_day.get(ref, 0),
             "borrowed_last_week": per_day.get(week_ago, 0),
             "returned_today": returned_today,
@@ -136,6 +173,7 @@ class Stats:
             },
             "borrowed_per_day": [{"date": d, "total": per_day.get(d, 0)} for d in days],
             "top_borrowers": top,
+            "top_visitors": top_visitors,
             "recent_loans": recent,
             "recent_total": recent_total,
         }

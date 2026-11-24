@@ -5,13 +5,12 @@ from models.member import Member, MemberRuleError
 
 
 def _profile_data(row):
-    name = row["full_name"] or row["username"]
+    name = row["full_name"]
     return {
         "id": row["id"],
         "code": f"MB-{row['id']:04d}",
         "name": name,
-        "username": row["username"],
-        "npm": row["npm"] or row["username"],     # akun lama belum punya NPM: pakai username
+        "npm": row["npm"],
         "email": row["email"],
         "phone": row["phone"],
         "role": row["role"],
