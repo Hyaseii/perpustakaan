@@ -2,7 +2,6 @@ def user_data(user):
     """Hanya field aman. password_hash tidak boleh ikut."""
     return {
         "id": user["id"],
-        "username": user["username"],
         "npm": user["npm"],
         "full_name": user["full_name"],
         "email": user["email"],

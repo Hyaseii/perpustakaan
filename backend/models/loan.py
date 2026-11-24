@@ -313,7 +313,7 @@ class Loan:
         q = q.strip()
         if q:
             like = f"%{q}%"
-            parts = ["u.full_name LIKE %s", "u.username LIKE %s", "b.title LIKE %s"]
+            parts = ["u.full_name LIKE %s", "b.title LIKE %s"]
             params += [like, like, like]
             code = q.upper().removeprefix("PN-").lstrip("0")   # "PN-0008" -> "8"
             if code.isdigit():
@@ -344,7 +344,7 @@ class Loan:
 
             cur.execute(
                 "SELECT p.id, p.user_id, p.book_id, p.status, p.borrowed_at, p.confirmed_at, "
-                "p.due_date, p.returned_at, b.title, u.username, u.full_name "
+                "p.due_date, p.returned_at, b.title, u.full_name "
                 + base + where
                 + " ORDER BY p.borrowed_at DESC, p.id DESC LIMIT %s OFFSET %s",
                 tuple(params) + (per_page, (page - 1) * per_page),

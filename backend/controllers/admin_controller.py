@@ -25,7 +25,7 @@ EMAIL_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]+")
 
 
 def _member_row(row):
-    name = row["full_name"] or row["username"]
+    name = row["full_name"]
     return {
         "id": row["id"],
         "code": f"MB-{row['id']:04d}",
@@ -284,7 +284,7 @@ def _display_status(row):
 
 
 def _loan_row(row):
-    name = row["full_name"] or row["username"]
+    name = row["full_name"]
     return {
         "id": row["id"],
         "code": f"PN-{row['id']:04d}",

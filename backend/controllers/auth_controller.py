@@ -50,7 +50,6 @@ def register(request):
 
     try:
         user_id = User.create(
-            username=npm,  # member: username otomatis = NPM
             email=email,
             password_hash=hash_password(password),
             npm=npm,
@@ -143,4 +142,5 @@ def reset(request):
         return error(BAD_LINK_MESSAGE, 400)
 
     User.update_password(user_id, hash_password(password))
+    session.destroy_user(user_id)  # semua sesi login lama milik akun ini ikut keluar
     return Response(200, {"message": "Password berhasil diubah. Silakan login."})
