@@ -37,7 +37,28 @@ lucide.createIcons();
   function keIso(d) { return d.getFullYear() + "-" + dua(d.getMonth() + 1) + "-" + dua(d.getDate()); }
   function tglPanjang(d) { return dua(d.getDate()) + " " + BULAN[d.getMonth()] + " " + d.getFullYear(); }
 
-  // pemberitahuan kecil di pojok kanan bawah (halaman admin belum punya toast)
+  function keNomorWa(hp) {
+    const digit = String(hp || "").replace(/\D/g, "");
+    if (!digit) return "";
+    if (digit.startsWith("0")) return "62" + digit.slice(1);
+    if (digit.startsWith("62")) return digit;
+    return "62" + digit;
+  }
+
+  function buatLinkWa(pinjaman) {
+    const wa = keNomorWa(pinjaman.borrower && pinjaman.borrower.phone);
+    if (!wa) return "";
+    const dTempo = parseTanggal(pinjaman.due_date);
+    const pesan =
+      "Halo " + pinjaman.borrower.name + ",\n" +
+      "Kami dari *Perpustakaan Keyto* ingin mengingatkan bahwa peminjaman buku:\n" +
+      "- Judul: *" + pinjaman.title + "* (" + pinjaman.code + ")\n" +
+      "- Jatuh tempo: *" + (dTempo ? tglPanjang(dTempo) : pinjaman.due_date) + "*\n\n" +
+      "Sudah melewati batas pengembalian. Mohon segera mengembalikan buku ke perpustakaan agar pembaca lain dapat meminjamnya. Terima kasih!";
+    return "https://wa.me/" + wa + "?text=" + encodeURIComponent(pesan);
+  }
+
+  // pemberitahuan kecil di pojok kanan bawah
   function toast(teks, galat) {
     let kotak = document.getElementById("admin-toast");
     if (!kotak) {
@@ -86,24 +107,23 @@ lucide.createIcons();
   const tombolBerikut = pager.querySelectorAll("button")[1];
   const pilPager = pager.querySelector(".pill");
 
-  // filter status ditambah dengan status baru (HTML temanmu tidak diubah)
+  // filter status ditambah dengan status baru
   pilihStatus.insertBefore(new Option("Tunggu konfirmasi", "pending"), pilihStatus.options[1]);
   pilihStatus.appendChild(new Option("Dibatalkan", "cancelled"));
   pilihStatus.appendChild(new Option("Hangus", "expired"));
-  // onchange bawaan memuat ulang halaman; kita ganti dengan pemuatan data saja
   pilihStatus.removeAttribute("onchange");
   pilihTanggal.removeAttribute("onchange");
 
   const state = { q: "", status: "all", tanggal: "all", page: 1 };
   let daftar = [];   // transaksi yang sedang tampil
 
-  // ---------------- alamat (?q=...&status=...) ----------------
+  // ---------------- alamat (?q=...&status=...&tanggal=...&hal=...) ----------------
   function bacaUrl() {
     const p = new URLSearchParams(window.location.search);
     state.q = p.get("q") || "";
     state.status = p.get("status") || "all";
     state.tanggal = p.get("tanggal") || "all";
-    const hal = Number(p.get("page"));
+    const hal = Number(p.get("hal"));
     state.page = hal > 0 ? hal : 1;
 
     inputCari.value = state.q;
@@ -114,11 +134,13 @@ lucide.createIcons();
   }
 
   function simpanUrl() {
-    const p = new URLSearchParams();
+    // pertahankan parameter ?page=peminjaman milik admin-shell
+    const p = new URLSearchParams(window.location.search);
+    ["q", "status", "tanggal", "hal"].forEach(function (k) { p.delete(k); });
     if (state.q) p.set("q", state.q);
     if (state.status !== "all") p.set("status", state.status);
     if (state.tanggal !== "all") p.set("tanggal", state.tanggal);
-    if (state.page > 1) p.set("page", String(state.page));
+    if (state.page > 1) p.set("hal", String(state.page));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
   }
@@ -223,7 +245,12 @@ lucide.createIcons();
       const h = k.querySelector("h3");
       return h && h.textContent.indexOf("Pengingat ramah") === 0;
     });
-    if (kartuInfo) isi(kartuInfo.querySelector(".meta"), r.overdue + " pinjaman terlambat perlu ditangani hari ini.");
+    if (kartuInfo) {
+      isi(kartuInfo.querySelector(".meta"),
+        r.overdue > 0
+          ? r.overdue + " pinjaman terlambat perlu ditangani hari ini."
+          : "Tidak ada pinjaman terlambat hari ini.");
+    }
   }
 
   // ---------------- mengambil data ----------------
@@ -232,7 +259,7 @@ lucide.createIcons();
     if (state.q) params.set("q", state.q);
     try {
       const data = await panggil("/api/admin/loans?" + params.toString());
-      if (data.page > data.pages) {            // mis. halaman terakhir kosong setelah data berkurang
+      if (data.page > data.pages) {
         state.page = data.pages;
         simpanUrl();
         return muat();
@@ -276,7 +303,7 @@ lucide.createIcons();
     } catch (galat) {
       toast(galat.message, true);
     }
-    await muat();   // apa pun hasilnya, tampilkan data terbaru
+    await muat();
   }
 
   badan.addEventListener("click", function (e) {
@@ -311,10 +338,10 @@ lucide.createIcons();
 
     const lPinjam = document.getElementById("lPinjam");
     lPinjam.value = keIso(hariIni);
-    lPinjam.readOnly = true;                        // tanggal pinjam selalu hari ini
+    lPinjam.readOnly = true;
     document.getElementById("lTempo").value = keIso(tempo);
     document.getElementById("lStatus").value = "borrowed";
-    document.getElementById("lStatus").disabled = true;   // pinjaman baru selalu "Dipinjam"
+    document.getElementById("lStatus").disabled = true;
     document.getElementById("lKembali").disabled = true;
     document.getElementById("lPeminjam").placeholder = "NPM, ID anggota (MB-0008), atau nama lengkap";
     document.getElementById("lBuku").placeholder = "Judul buku (persis) atau kode BK-007";
@@ -337,7 +364,7 @@ lucide.createIcons();
       simpanUrl();
       await muat();
     } catch (galat) {
-      toast(galat.message, true);   // jendela tetap terbuka supaya bisa diperbaiki
+      toast(galat.message, true);
     } finally {
       tombol.disabled = false;
     }
@@ -365,7 +392,7 @@ lucide.createIcons();
     document.getElementById("elKembali").value = "";
     document.getElementById("elKembali").disabled = true;
 
-    const tempo = document.getElementById("elTempo");   // satu-satunya kolom yang boleh diubah
+    const tempo = document.getElementById("elTempo");
     tempo.value = p.due_date ? p.due_date.slice(0, 10) : "";
     tempo.readOnly = false;
     modalUbah.classList.add("show");
@@ -388,16 +415,90 @@ lucide.createIcons();
     }
   });
 
+  // ---------------- jendela: pengingat WhatsApp terlambat ----------------
+  let modalWa = document.getElementById("overdueWaLoanModal");
+  if (!modalWa) {
+    modalWa = document.createElement("div");
+    modalWa.className = "modal-overlay";
+    modalWa.id = "overdueWaLoanModal";
+    modalWa.innerHTML =
+      '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="waLoanTitle" style="max-width:640px;">' +
+        '<div class="modal-head">' +
+          '<div class="modal-icon" style="background:#dcfce7;color:#15803d;"><i data-lucide="message-circle"></i></div>' +
+          '<div class="modal-title">' +
+            '<h2 id="waLoanTitle">Pengingat Peminjaman Terlambat</h2>' +
+            '<p>Kirim pesan pengingat pengembalian langsung ke WhatsApp peminjam.</p>' +
+          '</div>' +
+          '<button type="button" class="modal-close" data-close aria-label="Tutup"><i data-lucide="x"></i></button>' +
+        '</div>' +
+        '<div class="modal-body" id="waLoanBody" style="max-height:60vh;overflow-y:auto;"></div>' +
+        '<div class="modal-foot">' +
+          '<button type="button" class="btn-outline" data-close>Tutup</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modalWa);
+    lucide.createIcons();
+  }
+
+  const btnOverdue = document.getElementById("btnReviewOverdueLoan");
+  if (btnOverdue) {
+    btnOverdue.addEventListener("click", async function (e) {
+      e.preventDefault();
+      const isiModal = document.getElementById("waLoanBody");
+      isiModal.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">Memuat data peminjaman terlambat...</p>';
+      modalWa.classList.add("show");
+      try {
+        const data = await panggil("/api/admin/loans?status=overdue&page=1");
+        const terlambat = data.loans || [];
+        if (terlambat.length === 0) {
+          isiModal.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">Tidak ada peminjaman yang terlambat saat ini.</p>';
+        } else {
+          isiModal.innerHTML = terlambat.map(function (p) {
+            const hp = p.borrower && p.borrower.phone ? p.borrower.phone : "";
+            const link = buatLinkWa(p);
+            const dTempo = parseTanggal(p.due_date);
+            const tombolWa = link
+              ? '<a href="' + link + '" target="_blank" rel="noopener noreferrer" class="btn-primary" ' +
+                  'style="background:#16a34a;border-color:#16a34a;text-decoration:none;white-space:nowrap;padding:8px 14px;font-size:13px;">' +
+                  '<i data-lucide="send"></i> Kirim WhatsApp</a>'
+              : '<span class="muted" style="font-size:12px;">Nomor HP belum diisi</span>';
+
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #e2e8f0;">' +
+              '<div>' +
+                '<div style="font-weight:600;color:#0f172a;">' + esc(p.borrower.name) +
+                  ' <span class="muted" style="font-weight:400;font-size:12px;">(' + esc(p.borrower.member_id) + (hp ? ' &bull; ' + esc(hp) : '') + ')</span></div>' +
+                '<div style="font-size:13px;color:#334155;margin-top:2px;">Buku: <b>' + esc(p.title) + '</b> (' + esc(p.code) + ')</div>' +
+                '<div style="font-size:12px;color:#dc2626;margin-top:2px;">Jatuh tempo: ' + esc(dTempo ? tglPanjang(dTempo) : p.due_date) + '</div>' +
+              '</div>' +
+              tombolWa +
+            '</div>';
+          }).join("");
+          lucide.createIcons();
+        }
+      } catch (galat) {
+        isiModal.innerHTML = '<p style="color:#dc2626;text-align:center;padding:24px 0;">Gagal memuat daftar peminjaman terlambat.</p>';
+      }
+    });
+  }
+
   // ---------------- menutup jendela ----------------
-  [modalTambah, modalUbah].forEach(function (modal) {
+  [modalTambah, modalUbah, modalWa].forEach(function (modal) {
     modal.querySelectorAll("[data-close]").forEach(function (t) {
       t.addEventListener("click", function () { tutup(modal); });
     });
     modal.addEventListener("click", function (e) { if (e.target === modal) tutup(modal); });
   });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { tutup(modalTambah); tutup(modalUbah); }
-  });
+
+  if (window._peminjamanEscKey) {
+    document.removeEventListener("keydown", window._peminjamanEscKey);
+  }
+  window._peminjamanEscKey = function (e) {
+    if (e.key !== "Escape") return;
+    [modalTambah, modalUbah, modalWa].forEach(function (m) {
+      if (document.body.contains(m)) tutup(m);
+    });
+  };
+  document.addEventListener("keydown", window._peminjamanEscKey);
 
   // ---------------- mulai ----------------
   bacaUrl();

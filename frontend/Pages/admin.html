@@ -6,6 +6,7 @@
     <title>Keyto Perpustakaan - Dashboard</title>
     <link rel="stylesheet" href="../Style/styleNtransisi.css">
     <link rel="stylesheet" href="../Style/calenNbook.css">
+    <link rel="stylesheet" href="../Style/settingNloan.css">
     <link rel="stylesheet" href="../Style/memberNnotif.css">
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -120,11 +121,13 @@
                     </div>
                 </div>
 
-                <div class="avatar">ER</div>
-                
-                <div class="user-info">
-                    <strong>Emma Reed</strong>
-                    <span>Admin</span>
+                <div id="openAdminProfile" role="button" tabindex="0" title="Kelola Profil Admin" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:4px 8px;border-radius:12px;">
+                    <div class="avatar" id="topbarAvatar">AD</div>
+                    
+                    <div class="user-info">
+                        <strong id="topbarName">Memuat...</strong>
+                        <span id="topbarRole">Admin</span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -137,6 +140,109 @@
                 <span>Bantuan &amp; dukungan</span>
             </footer>
         </main>
+    </div>
+
+    <div class="modal-overlay" id="adminProfileModal">
+        <div class="modal modal-md" role="dialog" aria-modal="true" aria-labelledby="adminProfileTitle">
+            <form method="POST" action="#" id="adminProfileForm">
+
+                <div class="modal-head">
+                    <div class="modal-icon"><i data-lucide="user-cog"></i></div>
+                    <div class="modal-title">
+                        <h2 id="adminProfileTitle">Profil Akun</h2>
+                        <p id="adminProfileSub">Kelola informasi pribadi dan keamanan akun Anda.</p>
+                    </div>
+                    <button type="button" class="modal-close" data-close aria-label="Tutup">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="profCode">ID Akun</label>
+                            <input type="text" id="profCode" readonly class="readonly">
+                        </div>
+                        <div class="field">
+                            <label for="profRole">Peran</label>
+                            <input type="text" id="profRole" readonly class="readonly">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="profNpm">NPM / Identitas</label>
+                            <input type="text" id="profNpm" readonly class="readonly">
+                        </div>
+                        <div class="field">
+                            <label for="profCreated">Terdaftar Sejak</label>
+                            <input type="text" id="profCreated" readonly class="readonly">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="profName">Nama Lengkap</label>
+                        <input type="text" id="profName" placeholder="Masukkan nama lengkap" required>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="profEmail">Alamat Email</label>
+                            <input type="email" id="profEmail" placeholder="you@example.com" required>
+                        </div>
+                        <div class="field">
+                            <label for="profPhone">Nomor HP / WhatsApp</label>
+                            <input type="tel" id="profPhone" inputmode="numeric" maxlength="13" placeholder="08xxxxxxxxxx">
+                        </div>
+                    </div>
+
+                    <hr style="border:none;border-top:1px solid #e2e8f0;margin:8px 0 4px;">
+                    <p class="muted" style="font-size:12px;margin:0;">Ubah Kata Sandi (kosongkan jika tidak ingin mengganti kata sandi)</p>
+
+                    <div class="field">
+                        <label for="profCurrentPw">Kata Sandi Saat Ini</label>
+                        <div class="pw">
+                            <input type="password" id="profCurrentPw" placeholder="Masukkan kata sandi lama">
+                            <button type="button" class="toggle-prof-pw" aria-label="Tampilkan kata sandi">
+                                <i data-lucide="eye-off"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="profNewPw">Kata Sandi Baru</label>
+                            <div class="pw">
+                                <input type="password" id="profNewPw" placeholder="Minimal 8 karakter" minlength="8">
+                                <button type="button" class="toggle-prof-pw" aria-label="Tampilkan kata sandi">
+                                    <i data-lucide="eye-off"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="profConfirmPw">Konfirmasi Kata Sandi Baru</label>
+                            <div class="pw">
+                                <input type="password" id="profConfirmPw" placeholder="Ulangi kata sandi baru" minlength="8">
+                                <button type="button" class="toggle-prof-pw" aria-label="Tampilkan kata sandi">
+                                    <i data-lucide="eye-off"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-foot">
+                    <button type="button" class="btn-outline" data-close>Batal</button>
+                    <button type="submit" class="btn-primary">
+                        <i data-lucide="check"></i>
+                        Simpan Profil
+                    </button>
+                </div>
+
+            </form>
+        </div>
     </div>
 
     <script>

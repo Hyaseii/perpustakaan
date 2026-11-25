@@ -1,17 +1,4 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Peminjaman - Keyto Perpustakaan</title>
-    <link rel="stylesheet" href="../Style/styleNtransisi.css">
-    <link rel="stylesheet" href="../Style/memberNnotif.css">
-    <link rel="stylesheet" href="../Style/settingNloan.css">
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-</head>
-<body>
-
-        <main class="content">
+<main class="content">
 
             <div class="page-head">
                 <div>
@@ -197,38 +184,29 @@
             <section class="charts info-cards">
 
                 <div class="card">
-                    <h3>Peminjaman yang mudah.</h3>
+                    <h3>Aturan.</h3>
                     <p class="meta">Aturan yang jelas menjaga buku tetap beredar.</p>
 
                     <div class="info-body">
                         <i data-lucide="book-open"></i>
                         <p>Maksimal 5 buku sekaligus &bull; Masa pinjam 14 hari &bull; Satu perpanjangan jika tidak ada antrean reservasi.</p>
                     </div>
-
-                    <a href="#" class="link link-dark">Lihat aturan peminjaman <i data-lucide="arrow-right"></i></a>
                 </div>
 
                 <div class="card">
-                    <h3>Pengingat ramah sangat berarti.</h3>
-                    <p class="meta">18 pinjaman terlambat perlu ditangani hari ini.</p>
+                    <h3>Pengingat.</h3>
+                    <p class="meta">Memeriksa pinjaman terlambat...</p>
 
                     <div class="info-body">
-                        <i data-lucide="mail"></i>
-                        <p>Kirim pengingat pengembalian yang ramah agar pembaca lain dapat menemukan bacaan berikutnya.</p>
+                        <i data-lucide="message-circle"></i>
+                        <p>Kirim pengingat pengembalian langsung ke WhatsApp peminjam agar pembaca lain dapat menemukan bacaan berikutnya.</p>
                     </div>
 
-                    <a href="#" class="link link-dark">Tinjau pinjaman terlambat <i data-lucide="arrow-right"></i></a>
+                    <a href="#" class="link link-dark" id="btnReviewOverdueLoan">Tinjau pinjaman terlambat <i data-lucide="arrow-right"></i></a>
                 </div>
 
             </section>
-
-            <footer class="footer">
-                <span>&copy; 2026 Keyto Perpustakaan</span>
-                <span>Bantuan &amp; dukungan</span>
-            </footer>
-
         </main>
-    </div>
 
     <div class="modal-overlay" id="loanModal">
         <div class="modal modal-md" role="dialog" aria-modal="true" aria-labelledby="loanTitle">
@@ -375,10 +353,3 @@
             </form>
         </div>
     </div>
-
-    <script src="../Js/notifikasi.js"></script>
-    <script src="../Js/transisi.js"></script>
-    <script src="../Js/peminjaman.js"></script>
-    
-</body>
-</html>
