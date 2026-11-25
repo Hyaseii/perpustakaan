@@ -264,6 +264,7 @@ def set_book_cover(request):
     delete_cover_file(old_cover)   # sampul lama diganti
     return Response(200, {"book": _book_row(row)})
 
+
 def dashboard(request):
     # ?date=2026-11-22 -> tanggal acuan; kosong = hari ini
     raw = request.query.get("date", "")
@@ -295,6 +296,7 @@ def _loan_row(row):
             "name": name,
             "initials": initials(name),
             "member_id": f"MB-{row['user_id']:04d}",
+            "phone": row.get("phone"),
         },
         "status": row["status"],
         "display_status": _display_status(row),
@@ -323,6 +325,7 @@ def loans(request):
         "pages": max(1, ceil(total / PER_PAGE)),
         "summary": Loan.admin_summary(),
     })
+
 
 def create_loan(request):
     """Petugas mencatat peminjaman langsung di meja layanan (tanpa booking)."""

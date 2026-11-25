@@ -33,7 +33,7 @@ def send_reset_email(to_email, full_name, link, minutes=30):
 
     msg.set_content(
         f"Halo {name},\n\n"
-        f"Kami menerima permintaan untuk mengatur ulang password akun {config.MAIL_FROM_NAME} Anda.\n"
+        f"Kami menerima permintaan untuk mengatur ulang password akun Anda.\n" #{config.MAIL_FROM_NAME}
         f"Buka tautan berikut untuk membuat password baru (berlaku {minutes} menit, sekali pakai):\n\n"
         f"{link}\n\n"
         "Jika Anda tidak merasa memintanya, abaikan email ini. Password Anda tidak berubah.\n"
