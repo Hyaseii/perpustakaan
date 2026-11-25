@@ -9,7 +9,7 @@
   // Halaman tujuan setelah login. Role ditentukan oleh server (database).
   // Ganti ADMIN_PAGE menjadi "admin" kalau halaman admin sudah ada.
   const MEMBER_PAGE = "dashboard";
-  const ADMIN_PAGE = "home";
+  const ADMIN_PAGE = "admin";
 
   // ---------- Toast ----------
   window.showToast = function (message) {

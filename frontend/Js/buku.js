@@ -158,17 +158,19 @@ lucide.createIcons();
     state.q = p.get("q") || "";
     state.category = p.get("category") || "all";
     state.status = p.get("status") || "all";
-    const hal = Number(p.get("page"));
+    const hal = Number(p.get("hal"));
     state.page = hal > 0 ? hal : 1;
     setKontrol();
   }
 
   function simpanUrl() {
-    const p = new URLSearchParams();
+    // mulai dari alamat sekarang supaya ?page=bukustorage milik admin-shell tidak hilang
+    const p = new URLSearchParams(window.location.search);
+    ["q", "category", "status", "hal"].forEach(function (k) { p.delete(k); });
     if (state.q) p.set("q", state.q);
     if (state.category !== "all") p.set("category", state.category);
     if (state.status !== "all") p.set("status", state.status);
-    if (state.page > 1) p.set("page", String(state.page));
+    if (state.page > 1) p.set("hal", String(state.page));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
   }

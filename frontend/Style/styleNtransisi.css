@@ -23,7 +23,7 @@ body {
 
 .sidebar {
     width: 200px;
-    height: 100vh;
+    height: auto;
     background: white;
     border-right: 1px solid var(--line);
     padding: 20px 12px;
