@@ -23,7 +23,6 @@ NPM_RE = re.compile(r"[0-9]{12}")
 PHONE_RE = re.compile(r"08[0-9]{8,11}")
 EMAIL_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]+")
 
-
 def _member_row(row):
     name = row["full_name"]
     return {
@@ -37,7 +36,7 @@ def _member_row(row):
         "loans_total": row["loans_total"],
         "visits_total": row["visits_total"],
         "last_visit": row["last_visit"],
-        "status": "active",
+        "status": row.get("status") or "active",
     }
 
 
@@ -54,6 +53,15 @@ def _check_profile(body):
     if phone and not PHONE_RE.fullmatch(phone):
         return None, "Nomor HP harus diawali 08 dan 10-13 digit angka"
     return (name, email, phone or None), None
+
+
+def _check_member_status(raw):
+    val = str(raw or "active").strip().lower()
+    if val in ("inactive", "suspended"):
+        return "suspended"
+    if val == "active":
+        return "active"
+    return None
 
 
 def members(request):
@@ -82,13 +90,16 @@ def create_member(request):
 
     npm = str(body.get("npm") or "").strip()
     password = str(body.get("password") or "")
+    status = _check_member_status(body.get("status"))
     if not NPM_RE.fullmatch(npm):
         return error("NPM harus 12 digit angka", 400)
     if not 8 <= len(password) <= 128:
         return error("Kata sandi 8-128 karakter", 400)
+    if status is None:
+        return error("Status keanggotaan tidak valid", 400)
 
     try:
-        row = Member.admin_create(profile[0], npm, profile[1], profile[2], password)
+        row = Member.admin_create(profile[0], npm, profile[1], profile[2], password, status=status)
         return Response(201, {"member": _member_row(row)})
     except MemberRuleError as exc:
         return error(str(exc), 409)
@@ -99,18 +110,22 @@ def update_member(request):
     if member_id is None:
         return error("Anggota tidak ditemukan", 404)
 
-    profile, problem = _check_profile(request.json())
+    body = request.json()
+    profile, problem = _check_profile(body)
     if problem:
         return error(problem, 400)
 
+    status = _check_member_status(body.get("status")) if "status" in body else None
+    if "status" in body and status is None:
+        return error("Status keanggotaan tidak valid", 400)
+
     try:
-        row = Member.admin_update(member_id, *profile)
+        row = Member.admin_update(member_id, *profile, status=status)
         return Response(200, {"member": _member_row(row)})
     except MemberNotFoundError as exc:
         return error(str(exc), 404)
     except MemberRuleError as exc:
         return error(str(exc), 409)
-
 
 def delete_member(request):
     member_id = _path_id(request)
@@ -371,3 +386,145 @@ def create_loan(request):
         return error(str(exc), 404)
     except LoanRuleError as exc:
         return error(str(exc), 409)
+
+def _relative_time(dt):
+    """Ubah datetime MySQL jadi teks '2 menit lalu', '1 jam lalu', atau 'Kemarin'."""
+    if dt is None:
+        return ""
+    from datetime import datetime
+    now = datetime.now()
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        diff_days = (now.date() - dt).days
+        if diff_days <= 0:
+            return "Hari ini"
+        if diff_days == 1:
+            return "Kemarin"
+        return f"{diff_days} hari lalu"
+
+    secs = max(0, int((now - dt).total_seconds()))
+    if secs < 60:
+        return "Baru saja"
+    if secs < 3600:
+        return f"{secs // 60} menit lalu"
+    if secs < 86400:
+        return f"{secs // 3600} jam lalu"
+    days = secs // 86400
+    if days == 1:
+        return "Kemarin"
+    return f"{days} hari lalu"
+
+
+def notifications(request):
+    """Gabungkan aktivitas terbaru (peminjaman, keterlambatan, anggota baru, kunjungan)."""
+    from database.db import cursor
+    Loan.expire_stale()
+    items = []
+
+    with cursor() as cur:
+        # 1. Pinjaman terlambat
+        cur.execute(
+            "SELECT p.id, p.due_date, u.full_name, b.title "
+            "FROM peminjaman p "
+            "JOIN `user` u ON u.id = p.user_id "
+            "JOIN buku b ON b.id = p.book_id "
+            "WHERE p.status = 'borrowed' AND p.due_date < CURRENT_DATE() "
+            "ORDER BY p.due_date ASC LIMIT 4"
+        )
+        for r in cur.fetchall():
+            items.append({
+                "key": f"overdue-{r['id']}-{r['due_date']}",
+                "icon": "circle-alert",
+                "tone": "red",
+                "title": "Buku terlambat",
+                "detail": f"Terlambat \u2022 {r['title']} ({r['full_name']}) perlu diingatkan.",
+                "time": _relative_time(r["due_date"]),
+                "sort_ts": str(r["due_date"]) + " 23:59:59",
+                "page": "peminjaman",
+            })
+
+        # 2. Menunggu konfirmasi peminjaman
+        cur.execute(
+            "SELECT p.id, p.borrowed_at, u.full_name, b.title "
+            "FROM peminjaman p "
+            "JOIN `user` u ON u.id = p.user_id "
+            "JOIN buku b ON b.id = p.book_id "
+            "WHERE p.status = 'pending' "
+            "ORDER BY p.borrowed_at DESC LIMIT 4"
+        )
+        for r in cur.fetchall():
+            items.append({
+                "key": f"pending-{r['id']}",
+                "icon": "clock",
+                "tone": "blue",
+                "title": "Menunggu konfirmasi pinjam",
+                "detail": f"Booking \u2022 {r['full_name']} ingin meminjam {r['title']}.",
+                "time": _relative_time(r["borrowed_at"]),
+                "sort_ts": str(r["borrowed_at"]),
+                "page": "peminjaman",
+            })
+
+        # 3. Pengembalian buku terbaru
+        cur.execute(
+            "SELECT p.id, p.returned_at, u.full_name, b.title "
+            "FROM peminjaman p "
+            "JOIN `user` u ON u.id = p.user_id "
+            "JOIN buku b ON b.id = p.book_id "
+            "WHERE p.status = 'returned' AND p.returned_at IS NOT NULL "
+            "ORDER BY p.returned_at DESC LIMIT 3"
+        )
+        for r in cur.fetchall():
+            items.append({
+                "key": f"returned-{r['id']}",
+                "icon": "book-open",
+                "tone": "blue",
+                "title": "Buku dikembalikan",
+                "detail": f"Pengembalian \u2022 {r['title']} oleh {r['full_name']} kembali ke rak.",
+                "time": _relative_time(r["returned_at"]),
+                "sort_ts": str(r["returned_at"]),
+                "page": "peminjaman",
+            })
+
+        # 4. Anggota baru terdaftar
+        cur.execute(
+            "SELECT id, full_name, created_at FROM `user` "
+            "WHERE role = 'member' ORDER BY created_at DESC, id DESC LIMIT 3"
+        )
+        for r in cur.fetchall():
+            items.append({
+                "key": f"member-{r['id']}",
+                "icon": "user-plus",
+                "tone": "blue",
+                "title": "Anggota baru terdaftar",
+                "detail": f"Anggota \u2022 {r['full_name']} bergabung di perpustakaan.",
+                "time": _relative_time(r["created_at"]),
+                "sort_ts": str(r["created_at"]),
+                "page": "anggota",
+            })
+
+# 5. Pengunjung check-in terbaru
+        try:
+            cur.execute(
+                "SELECT k.id, k.created_at, k.purpose, COALESCE(u.full_name, k.visitor_name) AS name "
+                "FROM kunjungan k LEFT JOIN `user` u ON u.id = k.user_id "
+                "WHERE k.status = 'recorded' "
+                "ORDER BY k.created_at DESC LIMIT 3"
+            )
+            for r in cur.fetchall():
+                items.append({
+                    "key": f"visit-{r['id']}",
+                    "icon": "footprints",
+                    "tone": "gray",
+                    "title": "Aktivitas kunjungan anggota" if r.get("purpose") == "Login portal anggota" else "Pengunjung check-in",
+                    "detail": f"Pengunjung \u2022 {r['name']} ({r.get('purpose') or 'Kunjungan perpustakaan'}).",
+                    "time": _relative_time(r["created_at"]),
+                    "sort_ts": str(r["created_at"]),
+                    "page": "pengunjung",
+                })
+        except Exception:
+            pass
+
+    items.sort(key=lambda x: x["sort_ts"], reverse=True)
+    for it in items:
+        it.pop("sort_ts", None)
+
+    return Response(200, {"notifications": items[:10]})
