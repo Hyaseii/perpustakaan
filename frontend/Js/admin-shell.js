@@ -73,7 +73,7 @@
     try {
       const res = await fetch("/api/profile");
       if (res.status === 401) {
-        window.location.href = "/Pages/index";
+        window.location.href = "/index";
         return null;
       }
       const data = await res.json().catch(function () { return {}; });
@@ -317,7 +317,7 @@
     logout.addEventListener("click", async function (e) {
       e.preventDefault();
       try { await fetch("/api/auth/logout", { method: "POST" }); } catch (error) {}
-      window.location.href = "/Pages/index";
+      window.location.href = "/index";
     });
   }
 

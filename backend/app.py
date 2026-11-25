@@ -11,8 +11,9 @@ from models.user import User
 from routes import router
 
 ROOT = os.path.realpath(FRONTEND_DIR)
+ROOT_INDEX = os.path.realpath(os.path.join(ROOT, "index.html"))
 ALLOWED_DIRS = {os.path.normcase(n) for n in ("Pages", "Style", "Js", "assets")}
-LOGIN_PAGE = "/Pages/index"
+LOGIN_PAGE = "/index"
 
 # Hak akses halaman di Pages/. Halaman lain di Pages/ OTOMATIS khusus admin.
 PAGES_DIR = os.path.join(ROOT, "Pages")
@@ -50,6 +51,8 @@ def resolve_static(url_path):
             return None  # keluar dari folder frontend (path traversal)
     except ValueError:
         return None
+    if os.path.normcase(full) == os.path.normcase(ROOT_INDEX) and os.path.isfile(full):
+        return full
     first = os.path.relpath(full, ROOT).split(os.sep)[0]
     if os.path.normcase(first) not in ALLOWED_DIRS or not os.path.isfile(full):
         return None
@@ -58,6 +61,8 @@ def resolve_static(url_path):
 
 def access_level(full):
     """'public', 'member', atau 'admin' untuk sebuah file."""
+    if os.path.normcase(full) == os.path.normcase(ROOT_INDEX):
+        return "public"
     folder = os.path.normcase(os.path.dirname(full))
     pages = os.path.normcase(PAGES_DIR)
     if not (folder + os.sep).startswith(pages + os.sep):
@@ -87,7 +92,8 @@ class Handler(BaseHTTPRequestHandler):
             elif request.method != "GET":
                 error("Method tidak diizinkan", 405).send(self)
             elif request.path == "/":
-                self._redirect(LOGIN_PAGE)
+                query = urlsplit(self.path).query
+                self._redirect(LOGIN_PAGE + ("?" + query if query else ""))
             else:
                 self._serve_static(request)
         except Exception:
