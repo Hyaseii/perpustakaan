@@ -22,6 +22,26 @@ lucide.createIcons();
     return m ? m[3] + " " + BULAN[Number(m[2]) - 1] + " " + m[1] : "";
   }
 
+  function keNomorWa(hp) {
+    const digit = String(hp || "").replace(/\D/g, "");
+    if (!digit) return "";
+    if (digit.startsWith("0")) return "62" + digit.slice(1);
+    if (digit.startsWith("62")) return digit;
+    return "62" + digit;
+  }
+
+  function buatLinkWa(pinjaman) {
+    const wa = keNomorWa(pinjaman.borrower && pinjaman.borrower.phone);
+    if (!wa) return "";
+    const pesan =
+      "Halo " + pinjaman.borrower.name + ",\n" +
+      "Kami dari *Perpustakaan Keyto* ingin mengingatkan bahwa peminjaman buku:\n" +
+      "- Judul: *" + pinjaman.title + "* (" + pinjaman.code + ")\n" +
+      "- Jatuh tempo: *" + tgl(pinjaman.due_date) + "*\n\n" +
+      "Sudah melewati batas pengembalian. Mohon segera mengembalikan buku ke perpustakaan agar pembaca lain dapat meminjamnya. Terima kasih!";
+    return "https://wa.me/" + wa + "?text=" + encodeURIComponent(pesan);
+  }
+
   function toast(teks, galat) {
     let kotak = document.getElementById("admin-toast");
     if (!kotak) {
@@ -76,8 +96,9 @@ lucide.createIcons();
 
   const state = { q: "", status: "all", sort: "recent", page: 1 };
   let daftar = [];
+  let daftarTerlambat = [];
 
-  // ---------------- alamat (?q=...&status=...&sort=...&page=...) ----------------
+  // ---------------- alamat (?q=...&status=...&sort=...&hal=...) ----------------
   function setKontrol() {
     inputCari.value = state.q;
     pilihStatus.value = state.status;
@@ -91,17 +112,19 @@ lucide.createIcons();
     state.q = p.get("q") || "";
     state.status = p.get("status") || "all";
     state.sort = p.get("sort") || "recent";
-    const hal = Number(p.get("page"));
+    const hal = Number(p.get("hal"));
     state.page = hal > 0 ? hal : 1;
     setKontrol();
   }
 
   function simpanUrl() {
-    const p = new URLSearchParams();
+    // pertahankan parameter ?page=anggota milik admin-shell
+    const p = new URLSearchParams(window.location.search);
+    ["q", "status", "sort", "hal"].forEach(function (k) { p.delete(k); });
     if (state.q) p.set("q", state.q);
     if (state.status !== "all") p.set("status", state.status);
     if (state.sort !== "recent") p.set("sort", state.sort);
-    if (state.page > 1) p.set("page", String(state.page));
+    if (state.page > 1) p.set("hal", String(state.page));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
   }
@@ -117,8 +140,8 @@ lucide.createIcons();
       "<td>" + (m.last_visit ? tgl(m.last_visit) : "&mdash;") + "</td>" +
       '<td><span class="status status-active">Aktif</span></td>' +
       '<td><div class="actions">' +
-        '<button type="button" class="icon-act icon-edit" data-aksi="edit" aria-label="Ubah"><i data-lucide="pencil"></i></button>' +
-        '<button type="button" class="icon-act icon-delete" data-aksi="delete" aria-label="Hapus"><i data-lucide="trash-2"></i></button>' +
+      '<button type="button" class="icon-act icon-edit" data-aksi="edit" aria-label="Ubah"><i data-lucide="pencil"></i></button>' +
+      '<button type="button" class="icon-act icon-delete" data-aksi="delete" aria-label="Hapus"><i data-lucide="trash-2"></i></button>' +
       "</div></td></tr>";
   }
 
@@ -159,7 +182,7 @@ lucide.createIcons();
     const sekarang = new Date();
     isi(document.querySelector(".section-sub"),
       "Total pinjaman dan kunjungan sampai " + tgl(sekarang.getFullYear() + "-" +
-      String(sekarang.getMonth() + 1).padStart(2, "0") + "-" + String(sekarang.getDate()).padStart(2, "0")) +
+        String(sekarang.getMonth() + 1).padStart(2, "0") + "-" + String(sekarang.getDate()).padStart(2, "0")) +
       " \u2022 Diurutkan berdasarkan " + URUTAN[state.sort]);
     isi(document.querySelector(".table-foot > .muted"),
       "Menampilkan " + awal + "-" + akhir + " dari " + angka(data.total) + " anggota \u2022 " +
@@ -170,6 +193,20 @@ lucide.createIcons();
   }
 
   // ---------------- mengambil data ----------------
+  async function muatTerlambat() {
+    try {
+      const data = await panggil("/api/admin/loans?status=overdue&page=1");
+      daftarTerlambat = data.loans || [];
+      const jumlah = data.total || 0;
+      isi(document.getElementById("overdueMeta"),
+        jumlah > 0
+          ? jumlah + " pinjaman terlambat perlu ditangani hari ini."
+          : "Tidak ada pinjaman terlambat hari ini.");
+    } catch (e) {
+      isi(document.getElementById("overdueMeta"), "Tidak dapat memuat status pinjaman terlambat.");
+    }
+  }
+
   async function muat() {
     const params = new URLSearchParams({ status: state.status, sort: state.sort, page: String(state.page) });
     if (state.q) params.set("q", state.q);
@@ -218,18 +255,87 @@ lucide.createIcons();
   const formUbah = document.getElementById("editForm");
   const formHapus = document.getElementById("deleteForm");
 
+  // modal daftar peminjaman terlambat + kirim WhatsApp
+  let modalWa = document.getElementById("overdueWaModal");
+  if (!modalWa) {
+    modalWa = document.createElement("div");
+    modalWa.className = "modal-overlay";
+    modalWa.id = "overdueWaModal";
+    modalWa.innerHTML =
+      '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="waModalTitle" style="max-width:640px;">' +
+      '<div class="modal-head">' +
+      '<div class="modal-icon" style="background:#dcfce7;color:#15803d;"><i data-lucide="message-circle"></i></div>' +
+      '<div class="modal-title">' +
+      '<h2 id="waModalTitle">Pengingat Peminjaman Terlambat</h2>' +
+      '<p id="waModalSub">Kirim pesan pengingat pengembalian langsung ke WhatsApp peminjam.</p>' +
+      '</div>' +
+      '<button type="button" class="modal-close" data-close aria-label="Tutup"><i data-lucide="x"></i></button>' +
+      '</div>' +
+      '<div class="modal-body" id="waModalBody" style="max-height:60vh;overflow-y:auto;"></div>' +
+      '<div class="modal-foot">' +
+      '<button type="button" class="btn-outline" data-close>Tutup</button>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(modalWa);
+    lucide.createIcons();
+  }
+
   function buka(modal) { modal.classList.add("show"); }
   function tutup(modal) { modal.classList.remove("show"); }
 
-  [modalTambah, modalUbah, modalHapus].forEach(function (modal) {
+  [modalTambah, modalUbah, modalHapus, modalWa].forEach(function (modal) {
     modal.querySelectorAll("[data-close], #closeModal, #cancelModal").forEach(function (t) {
       t.addEventListener("click", function () { tutup(modal); });
     });
     modal.addEventListener("click", function (e) { if (e.target === modal) tutup(modal); });
   });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { tutup(modalTambah); tutup(modalUbah); tutup(modalHapus); }
-  });
+
+  // buang pendengar Esc lama supaya tidak menumpuk saat menu Anggota dibuka berulang kali
+  if (window._anggotaEscKey) {
+    document.removeEventListener("keydown", window._anggotaEscKey);
+  }
+  window._anggotaEscKey = function (e) {
+    if (e.key !== "Escape") return;
+    [modalTambah, modalUbah, modalHapus, modalWa].forEach(function (m) {
+      if (document.body.contains(m)) tutup(m);
+    });
+  };
+  document.addEventListener("keydown", window._anggotaEscKey);
+
+  // tombol "Tinjau peminjaman terlambat" -> buka daftar kirim WhatsApp
+  const btnOverdue = document.getElementById("btnReviewOverdue");
+  if (btnOverdue) {
+    btnOverdue.addEventListener("click", async function (e) {
+      e.preventDefault();
+      await muatTerlambat();
+      const isiModal = document.getElementById("waModalBody");
+      if (daftarTerlambat.length === 0) {
+        isiModal.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">Tidak ada peminjaman yang terlambat saat ini.</p>';
+      } else {
+        isiModal.innerHTML = daftarTerlambat.map(function (p) {
+          const hp = p.borrower && p.borrower.phone ? p.borrower.phone : "";
+          const link = buatLinkWa(p);
+          const tombolWa = link
+            ? '<a href="' + link + '" target="_blank" rel="noopener noreferrer" class="btn-primary" ' +
+            'style="background:#16a34a;border-color:#16a34a;text-decoration:none;white-space:nowrap;padding:8px 14px;font-size:13px;">' +
+            '<i data-lucide="send"></i> Kirim WhatsApp</a>'
+            : '<span class="muted" style="font-size:12px;">Nomor HP belum diisi</span>';
+
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #e2e8f0;">' +
+            '<div>' +
+            '<div style="font-weight:600;color:#0f172a;">' + esc(p.borrower.name) +
+            ' <span class="muted" style="font-weight:400;font-size:12px;">(' + esc(p.borrower.member_id) + (hp ? ' &bull; ' + esc(hp) : '') + ')</span></div>' +
+            '<div style="font-size:13px;color:#334155;margin-top:2px;">Buku: <b>' + esc(p.title) + '</b> (' + esc(p.code) + ')</div>' +
+            '<div style="font-size:12px;color:#dc2626;margin-top:2px;">Jatuh tempo: ' + esc(tgl(p.due_date)) + '</div>' +
+            '</div>' +
+            tombolWa +
+            '</div>';
+        }).join("");
+        lucide.createIcons();
+      }
+      buka(modalWa);
+    });
+  }
 
   // tombol mata di kolom kata sandi
   document.querySelectorAll(".toggle-pw").forEach(function (tombol) {
@@ -248,10 +354,10 @@ lucide.createIcons();
     baris.className = "field-row";
     baris.innerHTML =
       '<div class="field"><label for="' + kunci + 'Npm">NPM</label>' +
-        '<input type="text" id="' + kunci + 'Npm" inputmode="numeric" maxlength="12" ' +
-        (npmHanyaBaca ? 'readonly class="readonly"' : 'placeholder="12 digit angka" required') + "></div>" +
+      '<input type="text" id="' + kunci + 'Npm" inputmode="numeric" maxlength="12" ' +
+      (npmHanyaBaca ? 'readonly class="readonly"' : 'placeholder="12 digit angka" required') + "></div>" +
       '<div class="field"><label for="' + kunci + 'Hp">Nomor HP (opsional)</label>' +
-        '<input type="tel" id="' + kunci + 'Hp" inputmode="numeric" maxlength="13" placeholder="08xxxxxxxxxx"></div>';
+      '<input type="tel" id="' + kunci + 'Hp" inputmode="numeric" maxlength="13" placeholder="08xxxxxxxxxx"></div>';
     return baris;
   }
   document.getElementById("password").closest(".field-row").before(buatBarisNpmHp("n", false));
@@ -386,4 +492,5 @@ lucide.createIcons();
   // ---------------- mulai ----------------
   bacaUrl();
   muat();
+  muatTerlambat();
 })();

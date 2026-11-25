@@ -59,7 +59,7 @@ lucide.createIcons();
     return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
   }
 
-    // ---------------- sampul ----------------
+  // ---------------- sampul ----------------
   function urlSampul(cover) {
     if (!cover) return "";
     if (cover.indexOf("/") !== -1) return encodeURI(cover.charAt(0) === "/" ? cover : "/" + cover);
@@ -144,7 +144,7 @@ lucide.createIcons();
   const state = { q: "", category: "all", status: "all", page: 1 };
   let daftar = [];   // buku yang sedang tampil
 
-  // ---------------- alamat (?q=...&category=...&status=...&page=...) ----------------
+  // ---------------- alamat (?q=...&category=...&status=...&hal=...) ----------------
   function setKontrol() {
     inputCari.value = state.q;
     pilihKategori.value = state.category;
@@ -158,17 +158,19 @@ lucide.createIcons();
     state.q = p.get("q") || "";
     state.category = p.get("category") || "all";
     state.status = p.get("status") || "all";
-    const hal = Number(p.get("page"));
+    const hal = Number(p.get("hal"));
     state.page = hal > 0 ? hal : 1;
     setKontrol();
   }
 
   function simpanUrl() {
-    const p = new URLSearchParams();
+    // mulai dari alamat sekarang supaya ?page=bukustorage milik admin-shell tidak hilang
+    const p = new URLSearchParams(window.location.search);
+    ["q", "category", "status", "hal"].forEach(function (k) { p.delete(k); });
     if (state.q) p.set("q", state.q);
     if (state.category !== "all") p.set("category", state.category);
     if (state.status !== "all") p.set("status", state.status);
-    if (state.page > 1) p.set("page", String(state.page));
+    if (state.page > 1) p.set("hal", String(state.page));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
   }
@@ -218,12 +220,12 @@ lucide.createIcons();
       isi(judul.querySelector(".stat-number"), angka(r.titles));
       isi(judul.querySelector(".stat-note"), "Dari " + r.categories + " kategori");
     }
-    const tersedia = cariKartu("Golongan tersedia");
+    const tersedia = cariKartu("Buku tersedia");
     if (tersedia) {
       isi(tersedia.querySelector(".stat-number"), angka(r.available));
-      isi(tersedia.querySelector(".stat-note"), "Dari " + angka(total) + " total golongan");
+      isi(tersedia.querySelector(".stat-note"), "Dari " + angka(total) + " total buku");
     }
-    const dipinjam = cariKartu("Golongan dipinjam");
+    const dipinjam = cariKartu("Buku dipinjam");
     if (dipinjam) {
       isi(dipinjam.querySelector(".stat-number"), angka(r.borrowed + r.pending));
       isi(dipinjam.querySelector(".stat-note"),
@@ -309,24 +311,29 @@ lucide.createIcons();
     });
     modal.addEventListener("click", function (e) { if (e.target === modal) tutup(modal); });
   });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { tutup(modalTambah); tutup(modalUbah); tutup(modalHapus); }
-  });
+
+  // buang pendengar Esc lama supaya tidak menumpuk saat menu Buku dibuka berulang kali
+  if (window._bukuEscKey) {
+    document.removeEventListener("keydown", window._bukuEscKey);
+  }
+  window._bukuEscKey = function (e) {
+    if (e.key !== "Escape") return;
+    if (document.body.contains(modalTambah)) tutup(modalTambah);
+    if (document.body.contains(modalUbah)) tutup(modalUbah);
+    if (document.body.contains(modalHapus)) tutup(modalHapus);
+  };
+  document.addEventListener("keydown", window._bukuEscKey);
 
   // ---------------- tambah buku ----------------
   const bStok = document.getElementById("bStok");
-  const bTersedia = document.getElementById("bTersedia");
 
   document.getElementById("openAddBook").addEventListener("click", function () {
     formTambah.reset();
     document.getElementById("bStatus").value = "Tersedia";
     document.getElementById("bStatus").disabled = true;   // buku baru selalu tersedia
-    bTersedia.readOnly = true;
-    bTersedia.value = bStok.value;
     sampulTambah.reset();
     buka(modalTambah);
   });
-  bStok.addEventListener("input", function () { bTersedia.value = bStok.value; });
 
   formTambah.addEventListener("submit", async function (e) {
     e.preventDefault();
@@ -360,7 +367,7 @@ lucide.createIcons();
   });
 
   // ---------------- ubah dan hapus (tombol di baris) ----------------
-  let bukuDiubah = null;   // { id, aktif } -> aktif = eksemplar yang sedang keluar
+  let bukuDiubah = null;
 
   badan.addEventListener("click", function (e) {
     const tombol = e.target.closest("button[data-aksi]");
@@ -369,16 +376,13 @@ lucide.createIcons();
     if (!b) return;
 
     if (tombol.dataset.aksi === "edit") {
-      bukuDiubah = { id: b.id, aktif: b.total - b.available };
+      bukuDiubah = { id: b.id };
       document.getElementById("eId").value = b.code;
       document.getElementById("editBookSub").textContent = b.code + " \u2022 " + b.title;
       document.getElementById("eJudul").value = b.title;
       document.getElementById("ePenulis").value = b.author;
       document.getElementById("eKategori").value = KATEGORI_LAYAR[b.category] || "";
       document.getElementById("eStok").value = b.total;
-      const eTersedia = document.getElementById("eTersedia");
-      eTersedia.value = b.available;
-      eTersedia.readOnly = true;                         // dihitung otomatis dari stok
       document.getElementById("eStatus").value = b.status === "available" ? "Tersedia" : "Dipinjam";
       document.getElementById("eStatus").disabled = true;
       sampulUbah.reset();
@@ -389,12 +393,6 @@ lucide.createIcons();
       document.getElementById("deleteSub").textContent = b.code + " \u2022 " + b.title;
       buka(modalHapus);
     }
-  });
-
-  // pratinjau: mengubah Stok langsung menghitung Tersedia
-  document.getElementById("eStok").addEventListener("input", function (e) {
-    if (!bukuDiubah) return;
-    document.getElementById("eTersedia").value = Math.max(0, Number(e.target.value) - bukuDiubah.aktif);
   });
 
   formUbah.addEventListener("submit", async function (e) {

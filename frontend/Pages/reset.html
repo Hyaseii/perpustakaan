@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Password Baru — Unindra Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../Style/global.css" />
+  <link rel="stylesheet" href="../Style/auth.css" />
+</head>
+<body data-page="auth">
+
+  <div class="auth-split-layout">
+    <aside class="auth-left-panel">
+      <div class="auth-left-overlay"></div>
+      <div class="auth-left-inner">
+        <div class="auth-brand">
+          <div class="auth-brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="auth-brand-name">Unindra Library</div>
+            <div class="auth-brand-uni">Universitas Indraprasta PGRI</div>
+          </div>
+        </div>
+
+        <div class="auth-story-copy">
+          <div class="auth-kicker">YOUR NEXT CHAPTER STARTS HERE</div>
+          <h1 class="auth-headline">A world of stories.<br />A place to belong.</h1>
+          <p class="auth-subheadline">
+            Discover something new, revisit an old favorite, and make room for a little wonder.
+          </p>
+          <div class="auth-metrics">
+            <span>12,480 books</span>
+            <span>1,248 members</span>
+            <span>One community</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="auth-right-panel">
+      <header class="auth-topbar">
+        <span class="auth-welcome-tag">WELCOME TO UNINDRA LIBRARY</span>
+        <a href="#help" class="auth-help-btn" onclick="showToast('Hubungi petugas meja layanan perpustakaan untuk bantuan akun.'); return false;">Help ↗</a>
+      </header>
+
+      <main class="auth-main-center">
+        <div class="auth-card">
+
+          <div id="reset-loading">
+            <h2 class="auth-title">Memeriksa tautan…</h2>
+            <p class="auth-subtitle">Mohon tunggu sebentar.</p>
+          </div>
+
+          <div id="reset-invalid" class="hidden">
+            <h2 class="auth-title">Tautan tidak valid</h2>
+            <p class="auth-subtitle" id="reset-invalid-text">Tautan sudah kedaluwarsa atau sudah dipakai. Silakan minta tautan baru.</p>
+            <button type="button" class="btn btn-primary btn-block" onclick="window.location.href='/Pages/forgot'">Minta tautan baru</button>
+            <div class="auth-switch-text">
+              <button type="button" class="text-link strong" onclick="window.location.href='/Pages/index'">Kembali ke Login →</button>
+            </div>
+          </div>
+
+          <div id="reset-form-wrap" class="hidden">
+            <h2 class="auth-title">Buat password baru</h2>
+            <p class="auth-subtitle">Masukkan password baru untuk akun Anda.</p>
+
+            <form id="reset-form" class="auth-form" onsubmit="handleReset(event)">
+              <div class="field-group">
+                <label for="reset-password">Password baru</label>
+                <div class="password-input-box">
+                  <input type="password" id="reset-password" placeholder="Create a password" minlength="8" maxlength="128" required />
+                  <button type="button" class="eye-toggle-btn" aria-label="Tampilkan password" onclick="togglePassword('reset-password', this)">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
+                      <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                  </button>
+                </div>
+                <span class="field-help-text">Gunakan minimal 8 karakter.</span>
+              </div>
+
+              <div class="field-group">
+                <label for="reset-confirm">Konfirmasi password</label>
+                <div class="password-input-box">
+                  <input type="password" id="reset-confirm" placeholder="Re-enter your password" maxlength="128" required />
+                  <button type="button" class="eye-toggle-btn" aria-label="Tampilkan password" onclick="togglePassword('reset-confirm', this)">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
+                      <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" id="reset-submit" class="btn btn-primary btn-block">Simpan password</button>
+            </form>
+          </div>
+
+        </div>
+      </main>
+
+      <footer class="auth-bottom-bar">
+        <span>© 2026 Unindra Library</span>
+        <span>Privacy · Terms</span>
+      </footer>
+    </section>
+  </div>
+
+  <script src="../Js/auth.js"></script>
+  <script src="../Js/reset.js"></script>
+</body>
+</html>

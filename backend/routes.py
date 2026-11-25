@@ -34,3 +34,4 @@ router.add("POST", "/api/admin/members/{id}", admin_controller.update_member, ro
 router.add("POST", "/api/admin/members/{id}/delete", admin_controller.delete_member, roles=("admin",))
 router.add("GET", "/api/profile", profile_controller.get_profile, login=True)
 router.add("POST", "/api/profile", profile_controller.update_profile, login=True)
+router.add("POST", "/api/profile/password", profile_controller.change_password, login=True)

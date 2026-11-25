@@ -1,8 +1,6 @@
 /* =========================================================
    admin-dashboard.js — mengisi dashboard admin dengan data dari database.
    Dipasang SETELAH script.js (grafik) dan kalender.js di home.html.
-   Bagian pengunjung dan tiga angka stok kecil belum punya data,
-   jadi tetap memakai angka contoh dari HTML.
    ========================================================= */
 (function () {
   "use strict";
@@ -83,6 +81,22 @@
     const sekarang = new Date();
 
     // 1) kartu angka di atas
+    const kartuPengunjung = cariStat("Pengunjung hari ini");
+    if (kartuPengunjung) {
+      const hariIni = Number(data.visitors_today || 0);
+      const mingguLalu = Number(data.visitors_last_week || 0);
+      isi(kartuPengunjung.querySelector(".stat-number"), angka(hariIni));
+
+      let catatanPengunjung;
+      if (mingguLalu > 0) {
+        const persen = Math.round(((hariIni - mingguLalu) / mingguLalu) * 100);
+        catatanPengunjung = bertanda(persen) + "% dibanding " + NAMA_HARI[tgl.getDay()] + " lalu";
+      } else {
+        catatanPengunjung = bertanda(hariIni) + " dibanding " + NAMA_HARI[tgl.getDay()] + " lalu";
+      }
+      isi(kartuPengunjung.querySelector(".stat-note"), catatanPengunjung);
+    }
+
     const kartuDipinjam = cariStat("Buku dipinjam hari ini");
     if (kartuDipinjam) {
       isi(kartuDipinjam.querySelector(".stat-number"), angka(data.borrowed_today));
@@ -90,7 +104,7 @@
       isi(kartuDipinjam.querySelector(".stat-note"),
         bertanda(selisih) + " dibanding " + NAMA_HARI[tgl.getDay()] + " lalu");
     }
-    const kartuTotal = cariStat("Total golongan buku");
+    const kartuTotal = cariStat("Total buku");
     if (kartuTotal) {
       isi(kartuTotal.querySelector(".stat-number"), angka(data.total_copies));
       isi(kartuTotal.querySelector(".stat-note"), angkaId(data.unique_titles) + " judul unik");
@@ -205,7 +219,10 @@
       isi(kartuTabel.querySelector(".meta"),
         "Peminjaman terbaru • " + rows.length + " dari " + angka(data.recent_total) + " transaksi");
       const tautan = kartuTabel.querySelector("a.link");
-      if (tautan) tautan.setAttribute("href", "peminjaman.html");
+      if (tautan) {
+        tautan.setAttribute("href", "admin?page=peminjaman");
+        tautan.dataset.page = "peminjaman";   // supaya ditangani router (tanpa reload)
+      }
     }
   }
 
@@ -234,18 +251,16 @@
     }
   }
 
-  // kalender.js memulai dari 1 Nov 2026 (data contoh): samakan dengan hari ini
-  if (typeof terpilih !== "undefined") {
-    terpilih = new Date();
-    labelTanggal.textContent = formatLabel(terpilih);
+  // kalender.js mengirim sinyal "kalender:terapkan" saat tombol Terapkan ditekan.
+  // Pendengar lama dibuang dulu supaya tidak menumpuk tiap Dashboard dibuka lagi.
+  if (window._dashKalender) {
+    document.removeEventListener("kalender:terapkan", window._dashKalender);
   }
-
-  // tombol "Terapkan" di kalender: muat ulang untuk tanggal yang dipilih.
-  // (kalender.js sudah memperbarui `terpilih` lebih dulu karena dipasang lebih awal)
-  const tombolTerapkan = document.getElementById("calApply");
-  if (tombolTerapkan) {
-    tombolTerapkan.addEventListener("click", function () { muat(terpilih); });
-  }
+  window._dashKalender = function (e) {
+    if (!document.getElementById("peminjamanChart")) return;  // Dashboard sedang tidak tampil
+    muat(e.detail.tanggal);
+  };
+  document.addEventListener("kalender:terapkan", window._dashKalender);
 
   muat(new Date());
 })();

@@ -266,6 +266,7 @@ class Loan:
                 (user_id,),
             )
             return cur.fetchone()["total"]
+
     @staticmethod
     def mark_returned(loan_id):
         """Admin menerima buku kembali: borrowed -> returned, stok bertambah."""
@@ -344,7 +345,7 @@ class Loan:
 
             cur.execute(
                 "SELECT p.id, p.user_id, p.book_id, p.status, p.borrowed_at, p.confirmed_at, "
-                "p.due_date, p.returned_at, b.title, u.full_name "
+                "p.due_date, p.returned_at, b.title, u.full_name, u.phone "
                 + base + where
                 + " ORDER BY p.borrowed_at DESC, p.id DESC LIMIT %s OFFSET %s",
                 tuple(params) + (per_page, (page - 1) * per_page),
