@@ -4,7 +4,7 @@
 
   const MIN_PASSWORD = 8;   // sama dengan auth_controller.py
   const MAX_PASSWORD = 128;
-  const LOGIN_PAGE = "/Pages/index";
+  const LOGIN_PAGE = "/index";
 
   const token = new URLSearchParams(window.location.search).get("token") || "";
 

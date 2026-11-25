@@ -233,7 +233,7 @@
       const data = await respons.json().catch(function () { return {}; });
 
       if (respons.status === 401) {                 // belum login
-        window.location.href = "/Pages/index";
+        window.location.href = "/index";
         return;
       }
       if (respons.status === 403) {                 // login, tapi bukan admin

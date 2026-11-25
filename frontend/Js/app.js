@@ -1207,7 +1207,7 @@
     }
     state.isLoggedIn = false;
     saveState();
-    window.location.href = "/Pages/index";
+    window.location.href = "/index";
   };
 
 

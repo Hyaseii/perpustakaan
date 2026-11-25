@@ -62,7 +62,7 @@ lucide.createIcons();
     const respons = await fetch(url, opsi);
     const data = await respons.json().catch(function () { return {}; });
     if (respons.status === 401) {
-      window.location.href = "/Pages/index";
+      window.location.href = "/index";
       throw new Error("Sesi berakhir, silakan login lagi");
     }
     if (!respons.ok) {
