@@ -17,7 +17,10 @@ LOGIN_PAGE = "/Pages/index"
 # Hak akses halaman di Pages/. Halaman lain di Pages/ OTOMATIS khusus admin.
 PAGES_DIR = os.path.join(ROOT, "Pages")
 PUBLIC_PAGES = {os.path.normcase(n) for n in ("index.html", "forgot.html", "reset.html")}  # siapa saja
-MEMBER_PAGES = {os.path.normcase(n) for n in ("dashboard.html",)}  # wajib login
+MEMBER_PAGES = {
+    os.path.normcase(n)
+    for n in ("dashboard.html", "buku.html", "pinjaman.html", "profile.html")
+}
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",

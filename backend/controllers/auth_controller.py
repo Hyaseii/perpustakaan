@@ -5,6 +5,7 @@ import traceback
 from config import PRODUCTION, APP_BASE_URL
 from core import session, reset_store
 from core.response import Response, error
+from database.db import cursor
 from models.user import User, DuplicateUserError
 from utils import mailer
 from utils.security import hash_password, verify_password, fake_verify
@@ -27,6 +28,29 @@ _last_forgot = {}  # {user_id: waktu permintaan terakhir}
 def _text(value):
     """Ambil teks yang sudah dirapikan, selain string dianggap kosong."""
     return value.strip() if isinstance(value, str) else ""
+
+
+def _record_daily_login_visit(user):
+    """Catat kunjungan daring anggota maksimal 1 kali per hari saat login."""
+    if user.get("role") != "member":
+        return
+    try:
+        with cursor() as cur:
+            cur.execute(
+                "SELECT id FROM kunjungan "
+                "WHERE user_id = %s AND visit_date = CURRENT_DATE() AND status = 'recorded' "
+                "LIMIT 1",
+                (user["id"],),
+            )
+            if cur.fetchone() is None:
+                cur.execute(
+                    "INSERT INTO kunjungan "
+                    "(user_id, visitor_name, visitor_type, visit_date, time_in, purpose, status) "
+                    "VALUES (%s, %s, 'member', CURRENT_DATE(), CURRENT_TIME(), 'Login portal anggota', 'recorded')",
+                    (user["id"], user["full_name"]),
+                )
+    except Exception:
+        traceback.print_exc()
 
 
 def register(request):
@@ -81,6 +105,16 @@ def login(request):
     if not verify_password(password, user["password_hash"]):
         return gagal
 
+    with cursor() as cur:
+        cur.execute("SHOW COLUMNS FROM `user` LIKE 'status'")
+        if cur.fetchone() is not None:
+            cur.execute("SELECT status FROM `user` WHERE id = %s", (user["id"],))
+            st = cur.fetchone()
+            if st and st.get("status") == "suspended":
+                return error("Akun Anda sedang ditangguhkan. Hubungi petugas perpustakaan.", 403)
+
+    _record_daily_login_visit(user)
+
     session.destroy(request.cookies.get(session.COOKIE_NAME))  # buang sesi lama
     token = session.create(user["id"])
     response = Response(200, auth_view.login_ok(user))
@@ -116,9 +150,8 @@ def forgot(request):
         try:
             mailer.send_reset_email(user["email"], user["full_name"], link)
         except Exception:
-            traceback.print_exc()  # detail hanya di terminal, jangan bocor ke pengguna
+            traceback.print_exc()
 
-    # Respons sama untuk semua kasus, supaya email terdaftar tidak bisa ditebak
     return Response(200, {"message": FORGOT_MESSAGE})
 
 
@@ -142,5 +175,5 @@ def reset(request):
         return error(BAD_LINK_MESSAGE, 400)
 
     User.update_password(user_id, hash_password(password))
-    session.destroy_user(user_id)  # semua sesi login lama milik akun ini ikut keluar
+    session.destroy_user(user_id)
     return Response(200, {"message": "Password berhasil diubah. Silakan login."})

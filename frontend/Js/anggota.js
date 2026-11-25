@@ -5,8 +5,7 @@ lucide.createIcons();
   "use strict";
 
   const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-  const URUTAN = { recent: "kunjungan terbaru", name: "nama A-Z", borrowed: "paling banyak pinjam" };
-
+  const URUTAN = { recent: "aktivitas terbaru", name: "nama A-Z", borrowed: "paling banyak pinjam" };
   // ---------------- alat bantu kecil ----------------
   function angka(n) { return Number(n).toLocaleString("en-US"); }
   function isi(el, teks) { if (el) el.textContent = teks; }
@@ -89,9 +88,6 @@ lucide.createIcons();
   const tombolBerikut = pager.querySelectorAll("button")[1];
   const pilPager = pager.querySelector(".pill");
 
-  // penangguhan belum ada: sembunyikan opsinya; onchange bawaan memuat ulang halaman, kita ganti
-  const opsiTidakAktif = pilihStatus.querySelector('option[value="suspended"]');
-  if (opsiTidakAktif) opsiTidakAktif.remove();
   pilihStatus.removeAttribute("onchange");
 
   const state = { q: "", status: "all", sort: "recent", page: 1 };
@@ -118,7 +114,6 @@ lucide.createIcons();
   }
 
   function simpanUrl() {
-    // pertahankan parameter ?page=anggota milik admin-shell
     const p = new URLSearchParams(window.location.search);
     ["q", "status", "sort", "hal"].forEach(function (k) { p.delete(k); });
     if (state.q) p.set("q", state.q);
@@ -130,6 +125,13 @@ lucide.createIcons();
   }
 
   // ---------------- menggambar tabel ----------------
+  function badgeStatus(status) {
+    if (status === "suspended") {
+      return '<span class="status status-suspended">Tidak Aktif</span>';
+    }
+    return '<span class="status status-active">Aktif</span>';
+  }
+
   function barisHtml(m) {
     return '<tr data-id="' + m.id + '">' +
       '<td class="muted">' + esc(m.code) + "</td>" +
@@ -138,7 +140,7 @@ lucide.createIcons();
       "<td>" + m.loans_total + "</td>" +
       "<td>" + m.visits_total + "</td>" +
       "<td>" + (m.last_visit ? tgl(m.last_visit) : "&mdash;") + "</td>" +
-      '<td><span class="status status-active">Aktif</span></td>' +
+      "<td>" + badgeStatus(m.status) + "</td>" +
       '<td><div class="actions">' +
       '<button type="button" class="icon-act icon-edit" data-aksi="edit" aria-label="Ubah"><i data-lucide="pencil"></i></button>' +
       '<button type="button" class="icon-act icon-delete" data-aksi="delete" aria-label="Hapus"><i data-lucide="trash-2"></i></button>' +
@@ -181,7 +183,7 @@ lucide.createIcons();
     const akhir = rows.length ? awal + rows.length - 1 : 0;
     const sekarang = new Date();
     isi(document.querySelector(".section-sub"),
-      "Total pinjaman dan kunjungan sampai " + tgl(sekarang.getFullYear() + "-" +
+      "Total pinjaman dan aktivitas login/kunjungan sampai " + tgl(sekarang.getFullYear() + "-" +
         String(sekarang.getMonth() + 1).padStart(2, "0") + "-" + String(sekarang.getDate()).padStart(2, "0")) +
       " \u2022 Diurutkan berdasarkan " + URUTAN[state.sort]);
     isi(document.querySelector(".table-foot > .muted"),
@@ -255,7 +257,6 @@ lucide.createIcons();
   const formUbah = document.getElementById("editForm");
   const formHapus = document.getElementById("deleteForm");
 
-  // modal daftar peminjaman terlambat + kirim WhatsApp
   let modalWa = document.getElementById("overdueWaModal");
   if (!modalWa) {
     modalWa = document.createElement("div");
@@ -290,7 +291,6 @@ lucide.createIcons();
     modal.addEventListener("click", function (e) { if (e.target === modal) tutup(modal); });
   });
 
-  // buang pendengar Esc lama supaya tidak menumpuk saat menu Anggota dibuka berulang kali
   if (window._anggotaEscKey) {
     document.removeEventListener("keydown", window._anggotaEscKey);
   }
@@ -348,7 +348,7 @@ lucide.createIcons();
     });
   });
 
-  // kolom NPM dan Nomor HP ditambahkan lewat JS (form temanmu belum punya)
+  // kolom NPM dan Nomor HP ditambahkan lewat JS
   function buatBarisNpmHp(kunci, npmHanyaBaca) {
     const baris = document.createElement("div");
     baris.className = "field-row";
@@ -363,7 +363,6 @@ lucide.createIcons();
   document.getElementById("password").closest(".field-row").before(buatBarisNpmHp("n", false));
   document.getElementById("editEmail").closest(".field").after(buatBarisNpmHp("e", true));
 
-  // hanya angka di kolom NPM dan HP
   ["nNpm", "nHp", "eHp"].forEach(function (id) {
     document.getElementById(id).addEventListener("input", function (e) {
       e.target.value = e.target.value.replace(/\D/g, "");
@@ -374,9 +373,10 @@ lucide.createIcons();
   document.getElementById("openModal").addEventListener("click", function () {
     formTambah.reset();
     ["password", "password2"].forEach(function (id) { document.getElementById(id).type = "password"; });
-    document.getElementById("statusAnggota").value = "active";
-    document.getElementById("statusAnggota").disabled = true;        // penangguhan belum ada
-    document.getElementById("totalPinjam").closest(".field-row").style.display = "none";   // angka hasil hitungan
+    const statusTambah = document.getElementById("statusAnggota");
+    statusTambah.value = "active";
+    statusTambah.disabled = false;
+    document.getElementById("totalPinjam").closest(".field-row").style.display = "none";
     document.getElementById("kunjunganTerakhir").closest(".field").style.display = "none";
     buka(modalTambah);
   });
@@ -396,18 +396,19 @@ lucide.createIcons();
         npm: npm,
         email: document.getElementById("email").value,
         phone: document.getElementById("nHp").value,
+        status: document.getElementById("statusAnggota").value,
         password: document.getElementById("password").value
       }));
       tutup(modalTambah);
       toast(data.member.name + " ditambahkan sebagai " + data.member.code + ".");
-      state.q = npm;                  // tampilkan baris barunya (yang belum pernah berkunjung ada di urutan bawah)
+      state.q = npm;
       state.status = "all";
       state.page = 1;
       setKontrol();
       simpanUrl();
       await muat();
     } catch (galat) {
-      toast(galat.message, true);     // jendela tetap terbuka supaya bisa diperbaiki
+      toast(galat.message, true);
     } finally {
       tombol.disabled = false;
     }
@@ -430,10 +431,9 @@ lucide.createIcons();
       document.getElementById("editEmail").value = m.email;
       document.getElementById("eNpm").value = m.npm || "";
       document.getElementById("eHp").value = m.phone || "";
-      // angka hasil hitungan: hanya untuk dilihat
       const status = document.getElementById("editStatus");
-      status.value = "active";
-      status.disabled = true;
+      status.value = m.status === "suspended" ? "suspended" : "active";
+      status.disabled = false;
       [["editPinjam", m.loans_total], ["editKunjungan", m.visits_total]].forEach(function (p) {
         const el = document.getElementById(p[0]);
         el.value = p[1];
@@ -459,7 +459,8 @@ lucide.createIcons();
       await panggil("/api/admin/members/" + idDiubah, kirimJson({
         name: document.getElementById("editNama").value,
         email: document.getElementById("editEmail").value,
-        phone: document.getElementById("eHp").value
+        phone: document.getElementById("eHp").value,
+        status: document.getElementById("editStatus").value
       }));
       tutup(modalUbah);
       toast("Data anggota diperbarui.");

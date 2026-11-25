@@ -12,6 +12,24 @@ class MemberRuleError(Exception):
     """Anggota ada, tapi aturan tidak mengizinkan."""
 
 
+_STATUS_READY = False
+
+
+def ensure_status_column():
+    """Pastikan kolom `status` ('active' / 'suspended') tersedia di tabel `user`."""
+    global _STATUS_READY
+    if _STATUS_READY:
+        return
+    with cursor() as cur:
+        cur.execute("SHOW COLUMNS FROM `user` LIKE 'status'")
+        if cur.fetchone() is None:
+            cur.execute(
+                "ALTER TABLE `user` "
+                "ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER role"
+            )
+    _STATUS_READY = True
+
+
 # urutan yang diizinkan (isi ORDER BY dipilih dari daftar ini, tidak pernah dari kiriman pengguna)
 _SORTS = {
     "recent": "v.last_visit IS NULL, v.last_visit DESC, u.id DESC",
@@ -21,7 +39,7 @@ _SORTS = {
 
 # total pinjam = pinjaman yang pernah dikonfirmasi; kunjungan = yang berstatus tercatat
 _ADMIN_SELECT = (
-    "SELECT u.id, u.npm, u.full_name, u.email, u.phone, u.created_at, "
+    "SELECT u.id, u.npm, u.full_name, u.email, u.phone, u.status, u.created_at, "
     "COALESCE(l.total, 0) AS loans_total, "
     "COALESCE(v.total, 0) AS visits_total, v.last_visit "
     "FROM `user` u "
@@ -42,7 +60,8 @@ class Member:
 
     @staticmethod
     def admin_search(q="", status="all", sort="recent", page=1, per_page=8):
-        """Daftar anggota untuk halaman admin: dengan pencarian, urutan, dan halaman."""
+        """Daftar anggota untuk halaman admin: dengan pencarian, filter status, urutan, dan halaman."""
+        ensure_status_column()
         conditions = ["u.role = 'member'"]
         params = []
 
@@ -57,8 +76,9 @@ class Member:
                 params.append(int(code))
             conditions.append("(" + " OR ".join(parts) + ")")
 
-        if status == "suspended":
-            conditions.append("1 = 0")   # belum ada fitur penangguhan: tidak ada yang cocok
+        if status in ("active", "suspended"):
+            conditions.append("u.status = %s")
+            params.append(status)
 
         where = " WHERE " + " AND ".join(conditions)
         order = _SORTS.get(sort, _SORTS["recent"])
@@ -78,19 +98,27 @@ class Member:
     @staticmethod
     def admin_summary():
         """Angka untuk tiga kartu di atas halaman Anggota."""
+        ensure_status_column()
         with cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) AS total, "
+                "COALESCE(SUM(u.status = 'suspended'), 0) AS suspended, "
                 "COALESCE(SUM(YEAR(created_at) = YEAR(CURRENT_DATE()) "
                 "AND MONTH(created_at) = MONTH(CURRENT_DATE())), 0) AS new_month "
-                "FROM `user` WHERE role = 'member'"
+                "FROM `user` u WHERE role = 'member'"
             )
             row = cur.fetchone()
-        return {"total": row["total"], "new_month": int(row["new_month"]), "suspended": 0}
+        return {
+            "total": row["total"],
+            "new_month": int(row["new_month"]),
+            "suspended": int(row["suspended"]),
+        }
 
     @staticmethod
-    def admin_create(name, npm, email, phone, password):
+    def admin_create(name, npm, email, phone, password, status="active"):
         """Admin mendaftarkan anggota."""
+        ensure_status_column()
+        clean_status = status if status in ("active", "suspended") else "active"
         with cursor() as cur:
             cur.execute(
                 "SELECT email FROM `user` "
@@ -105,25 +133,27 @@ class Member:
 
             try:
                 cur.execute(
-                    "INSERT INTO `user` (npm, full_name, email, phone, password_hash, role) "
-                    "VALUES (%s, %s, %s, %s, %s, 'member')",
-                    (npm, name, email, phone, hash_password(password)),
+                    "INSERT INTO `user` (npm, full_name, email, phone, password_hash, role, status) "
+                    "VALUES (%s, %s, %s, %s, %s, 'member', %s)",
+                    (npm, name, email, phone, hash_password(password), clean_status),
                 )
             except mysql.connector.Error as exc:
-                if exc.errno == 1062:          # data kembar yang lolos dari pemeriksaan di atas
+                if exc.errno == 1062:
                     raise MemberRuleError("NPM atau email sudah terdaftar") from exc
                 raise
             return Member._get(cur, cur.lastrowid)
 
     @staticmethod
-    def admin_update(member_id, name, email, phone):
-        """Ubah nama, email, dan HP. NPM tidak bisa diubah (itu identitas login)."""
+    def admin_update(member_id, name, email, phone, status=None):
+        """Ubah nama, email, HP, dan status keanggotaan. NPM tetap terkunci."""
+        ensure_status_column()
         with cursor() as cur:
             cur.execute(
-                "SELECT id FROM `user` WHERE id = %s AND role = 'member' FOR UPDATE",
+                "SELECT id, status FROM `user` WHERE id = %s AND role = 'member' FOR UPDATE",
                 (member_id,),
             )
-            if cur.fetchone() is None:
+            existing = cur.fetchone()
+            if existing is None:
                 raise MemberNotFoundError("Anggota tidak ditemukan")
 
             cur.execute(
@@ -133,9 +163,12 @@ class Member:
             if cur.fetchone() is not None:
                 raise MemberRuleError("Email sudah dipakai akun lain")
 
+            clean_status = (
+                status if status in ("active", "suspended") else existing.get("status", "active")
+            )
             cur.execute(
-                "UPDATE `user` SET full_name = %s, email = %s, phone = %s WHERE id = %s",
-                (name, email, phone, member_id),
+                "UPDATE `user` SET full_name = %s, email = %s, phone = %s, status = %s WHERE id = %s",
+                (name, email, phone, clean_status, member_id),
             )
             return Member._get(cur, member_id)
 
@@ -167,8 +200,6 @@ class Member:
                     "Anggota ini punya riwayat peminjaman sehingga tidak bisa dihapus"
                 )
 
-            # catatan yang tidak berarti (dibatalkan / hangus) ikut dibersihkan;
-            # data kunjungannya otomatis dilepas dari akun ini (ON DELETE SET NULL)
             cur.execute(
                 "DELETE FROM peminjaman WHERE user_id = %s AND status IN ('cancelled', 'expired')",
                 (member_id,),

@@ -56,7 +56,7 @@
             </select>
 
             <select class="select" id="sortFilter">
-                <option value="recent">Terakhir berkunjung</option>
+                <option value="recent">Terakhir aktif</option>
                 <option value="name">Nama A-Z</option>
                 <option value="borrowed">Paling banyak pinjam</option>
             </select>
@@ -76,7 +76,7 @@
                         <th>EMAIL</th>
                         <th>TOTAL PINJAM</th>
                         <th>TOTAL KUNJUNGAN</th>
-                        <th>KUNJUNGAN TERAKHIR</th>
+                        <th>TERAKHIR AKTIF</th>
                         <th>STATUS</th>
                         <th>UBAH</th>
                     </tr>
@@ -346,7 +346,7 @@
                         <label for="statusAnggota">Status</label>
                         <select id="statusAnggota" name="status">
                             <option value="active">Aktif</option>
-                            <option value="inactive">Tidak Aktif</option>
+                            <option value="suspended">Tidak Aktif</option>
                         </select>
                     </div>
                 </div>
@@ -411,7 +411,7 @@
                         <label for="editStatus">Status</label>
                         <select id="editStatus" name="status">
                             <option value="active">Aktif</option>
-                            <option value="inactive">Tidak Aktif</option>
+                            <option value="suspended">Tidak Aktif</option>
                         </select>
                     </div>
                 </div>
@@ -422,7 +422,7 @@
                         <input type="text" id="editNama" name="nama" required>
                     </div>
                     <div class="field">
-                        <label for="editTerakhir">Kunjungan terakhir</label>
+                        <label for="editTerakhir">Terakhir aktif</label>
                         <input type="date" id="editTerakhir" name="kunjungan_terakhir">
                     </div>
                 </div>
